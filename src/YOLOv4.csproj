@@ -1,6 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AssemblyName>LostTech.TensorFlow.YOLOv4</AssemblyName>
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <RootNamespace>tensorflow.keras</RootNamespace>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
@@ -21,6 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.2" />
+    <PackageReference Include="LostTech.TensorFlow" Version="1.15.0-RC1" />
     <!-- The following is recommended for public projects -->
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
   </ItemGroup>
