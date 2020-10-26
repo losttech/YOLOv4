@@ -3,15 +3,16 @@
 
     using LostTech.Gradient.ManualWrappers;
     public class FreezableBatchNormalization : BatchNormalization {
-        Tensor ShouldTrain(bool training) => tf.logical_and(training, this.trainable);
-        Tensor ShouldTrain(IGraphNodeBase? training)
-            => tf.logical_and(training ?? tf.constant(false), this.trainable);
+        static readonly Tensor @false = tf.constant(false);
+
+        IGraphNodeBase? ShouldTrain(IGraphNodeBase? training)
+            => this.trainable ? training : @false;
 
         public override Tensor call(IGraphNodeBase inputs, IGraphNodeBase? training = null)
             => base.call(inputs, this.ShouldTrain(training));
         public override Tensor call(IGraphNodeBase inputs, bool training)
-            => base.call(inputs, this.ShouldTrain(training));
+            => base.call(inputs, this.trainable && training);
         public override Tensor call(IEnumerable<IGraphNodeBase> inputs, bool training)
-            => base.call(inputs, this.ShouldTrain(training));
+            => base.call(inputs, this.trainable && training);
     }
 }

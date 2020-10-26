@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>LostTech.TensorFlow.YOLOv4</AssemblyName>
     <VersionPrefix>0.0.1</VersionPrefix>
-    <RootNamespace>tensorflow.keras</RootNamespace>
+    <RootNamespace>tensorflow</RootNamespace>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
@@ -21,16 +21,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\LICENSE" Pack="true" PackagePath=""/>
+    <None Include="..\LICENSE" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Gradient.Runtime" Version="0.4.4-D20201016-005-m" />
-    <PackageReference Include="LostTech.NumPy" Version="0.2.2-a4" />
-    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.2" />
-    <PackageReference Include="LostTech.TensorFlow" Version="1.15.0-RC1" />
+    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.3-b1261" />
+    <PackageReference Include="LostTech.NumPy" Version="0.2.2-a5" />
+    <PackageReference Include="LostTech.TensorFlow" Version="1.15.0-CI-20201020-001" />
     <!-- The following is recommended for public projects -->
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="1.0.1" />
     <PackageReference Include="System.Drawing.Common" Version="4.7.0" />
   </ItemGroup>
 

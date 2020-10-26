@@ -1,29 +1,41 @@
 ﻿namespace tensorflow.data {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Drawing;
     using System.Globalization;
     using System.IO;
     using System.Linq;
+    using System.Runtime.InteropServices;
     using System.Threading;
 
     using numpy;
 
     using Python.Runtime;
 
+    using SixLabors.ImageSharp;
+    using SixLabors.ImageSharp.Advanced;
+    using SixLabors.ImageSharp.PixelFormats;
+    using SixLabors.ImageSharp.Processing;
+
     using tensorflow.image;
+    using Image = SixLabors.ImageSharp.Image;
+    using Rectangle = SixLabors.ImageSharp.Rectangle;
+    using Size = SixLabors.ImageSharp.Size;
 
     public class ObjectDetectionDataset {
         readonly string[] annotations;
         readonly string[] classNames;
-        readonly uint[] strides;
+        readonly int[] strides;
         readonly ndarray<float> anchors;
-        readonly uint anchorsPerScale;
-        readonly uint inputSize;
-        readonly uint maxBBoxPerScale;
+        readonly int anchorsPerScale;
+        readonly int inputSize;
+        readonly int maxBBoxPerScale;
 
-        public ReadOnlySpan<string> ClassNames => this.classNames.AsSpan();
-        uint ClassCount => (uint)this.classNames.Length;
+        public int InputSize => (int)this.inputSize;
+        public ReadOnlySpan<string> ClassNames => this.classNames;
+        public ReadOnlySpan<int> Strides => this.strides;
+        int ClassCount => this.classNames.Length;
         public int Count => this.annotations.Length;
 
         public ObjectDetectionDataset(string[] annotations, string[] classNames,
@@ -42,7 +54,7 @@
             if (strides is null || strides.Length == 0)
                 throw new ArgumentNullException(nameof(strides));
             if (strides.Any(NotPositive)) throw new ArgumentOutOfRangeException(nameof(strides));
-            this.strides = strides.Select(i => (uint)i).ToArray();
+            this.strides = strides.ToArray();
 
             if (anchors is null) throw new ArgumentNullException(nameof(anchors));
             if (anchors.ndim != 3) throw new ArgumentException("Bad shape", paramName: nameof(anchors));
@@ -50,38 +62,37 @@
 
             if (anchorsPerScale <= 0)
                 throw new ArgumentOutOfRangeException(nameof(anchorsPerScale));
-            this.anchorsPerScale = (uint)anchorsPerScale;
+            this.anchorsPerScale = anchorsPerScale;
 
             if (inputSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(inputSize));
-            this.inputSize = (uint)inputSize;
+            this.inputSize = inputSize;
 
             if (maxBBoxPerScale <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maxBBoxPerScale));
-            this.maxBBoxPerScale = (uint)maxBBoxPerScale;
+            this.maxBBoxPerScale = maxBBoxPerScale;
         }
 
         public void Shuffle() => Tools.Shuffle(this.annotations);
 
         public IEnumerable<EntryBatch> Batch(int batchSize,
-                                             Func<Entry<float>, Entry<float>>? onloadAugmentation) {
+                                             Func<ClrEntry, ClrEntry>? onloadAugmentation) {
             if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
-            uint ubatchSize = (uint)batchSize;
 
             int totalBatches = (int)Math.Ceiling(this.Count * 1F / batchSize);
-            uint[] outputSizes = this.strides.Select(stride => this.inputSize / stride).ToArray();
+            int[] outputSizes = this.strides.Select(stride => this.inputSize / stride).ToArray();
             for (int batchNo = 0; batchNo < totalBatches; batchNo++) {
                 //tf does not seem to be use here
                 //using var _ = tf.device("/cpu:0").StartUsing();
-                var batchImages = np.zeros<float>(new ulong[] { ubatchSize, this.inputSize, this.inputSize, 3 });
+                var batchImages = np.zeros<float>(batchSize, this.inputSize, this.inputSize, 3);
                 var batchBBoxLabels = outputSizes.Select(outputSize
-                    => np.zeros<float>(new ulong[] {
-                                       ubatchSize, outputSize, outputSize,
-                                       this.anchorsPerScale, 5 + this.ClassCount })
+                    => np.zeros<float>(
+                                       batchSize, outputSize, outputSize,
+                                       this.anchorsPerScale, 5 + this.ClassCount)
                     ).ToArray();
 
                 var batchBBoxes = outputSizes.Select(
-                        _ => np.zeros<float>(new ulong[] { ubatchSize, this.maxBBoxPerScale, 4 }))
+                        _ => np.zeros<float>(batchSize, this.maxBBoxPerScale, 4))
                     .ToArray();
 
                 for (int itemNo = 0; itemNo < batchSize; itemNo++) {
@@ -89,16 +100,13 @@
                     // loop the last few items for the last batch if necessary
                     if (index >= this.Count) index -= this.Count;
                     string annotation = this.annotations[index];
-                    var rawEntry = LoadAnnotation(annotation);
-                    var entry = new Entry<float> {
-                        Image = (ndarray<float>)rawEntry.Image.astype(dtype.GetClass<float>()),
-                        BoundingBoxes = rawEntry.BoundingBoxes,
-                    };
+                    var rawEntry = LoadAnnotationClr(annotation);
                     if (onloadAugmentation != null)
-                        entry = onloadAugmentation(entry);
-                    entry = Preprocess(entry, new Size((int)this.inputSize, (int)this.inputSize));
+                        rawEntry = onloadAugmentation(rawEntry);
+                    var entry = Preprocess(rawEntry, new Size(this.inputSize, this.inputSize));
 
                     var (labes, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
+
                     batchImages[itemNo, .., .., ..] = entry.Image;
                     for (int i = 0; i < outputSizes.Length; i++) {
                         batchBBoxLabels[i][itemNo, .., .., .., ..] = labes[i];
@@ -134,8 +142,17 @@
             int width = entry.Image.shape.Item2;
             int[] reversedXs = Enumerable.Range(0, width).Reverse().ToArray();
             entry.Image = (ndarray<T>)entry.Image.__getitem__((.., reversedXs, ..));
-            entry.BoundingBoxes[(.., new[] { 0, 2 })] =
-                width - entry.BoundingBoxes[(.., new[] { 2, 0 })];
+            entry.BoundingBoxes[.., new[] { 0, 2 }] =
+                width - entry.BoundingBoxes[.., new[] { 2, 0 }];
+
+            return entry;
+        }
+        public static ClrEntry RandomHorizontalFlip(ClrEntry entry) {
+            if (random.Value.Next(2) == 0)
+                return entry;
+
+            entry.Image.Mutate(x => x.Flip(FlipMode.Horizontal));
+            entry.BoundingBoxes[.., new[] { 0, 2 }] = entry.Image.Width - entry.BoundingBoxes[.., new[] { 2, 0 }];
 
             return entry;
         }
@@ -145,20 +162,8 @@
                 return entry;
 
             int h = entry.Image.shape.Item1, w = entry.Image.shape.Item2;
-            ndarray<int> maxBBox = np.concatenate(new[] {
-                (ndarray<int>)entry.BoundingBoxes[.., 0..2].min(axis: 0),
-                (ndarray<int>)entry.BoundingBoxes[.., 2..4].max(axis: 0),
-            }, axis: -1);
-
-            int maxLtrans = maxBBox[0].AsScalar();
-            int maxUtrans = maxBBox[1].AsScalar();
-            int maxRtrans = w - maxBBox[2].AsScalar();
-            int maxDtrans = h - maxBBox[3].AsScalar();
-
-            int cropXMin = Math.Max(0, maxBBox[0].AsScalar() - random.Value.Next(maxLtrans));
-            int cropYMin = Math.Max(0, maxBBox[1].AsScalar() - random.Value.Next(maxUtrans));
-            int cropXMax = Math.Min(w, maxBBox[2].AsScalar() + random.Value.Next(maxRtrans));
-            int cropYMax = Math.Min(h, maxBBox[3].AsScalar() + random.Value.Next(maxDtrans));
+            GetRandomCrop(entry.BoundingBoxes, h, w,
+                out int cropXMin, out int cropYMin, out int cropXMax, out int cropYMax);
 
             entry.Image = entry.Image[cropYMin..cropYMax, cropXMin..cropXMax];
             entry.BoundingBoxes[(.., new[] { 0, 2 })] -= cropXMin;
@@ -167,31 +172,90 @@
             return entry;
         }
 
+        public static ClrEntry RandomCrop(ClrEntry entry) {
+            if (random.Value.Next(2) == 0)
+                return entry;
+
+            GetRandomCrop(entry.BoundingBoxes, height: entry.Image.Height, width: entry.Image.Width,
+                out int cropXMin, out int cropYMin, out int cropXMax, out int cropYMax);
+
+            var rect = new Rectangle(cropXMin, cropYMin, cropXMax - cropXMin, cropYMax - cropYMin);
+
+            entry.Image.Mutate(x => x.Crop(rect));
+            entry.BoundingBoxes[(.., new[] { 0, 2 })] -= cropXMin;
+            entry.BoundingBoxes[(.., new[] { 1, 3 })] -= cropYMin;
+
+            return entry;
+        }
+
+        static void GetRandomCrop(ndarray<int> boundingBoxes, int height, int width,
+                                  out int cropXMin, out int cropYMin, out int cropXMax, out int cropYMax) {
+            ndarray<int> maxBBox = np.concatenate(new[] {
+                (ndarray<int>)boundingBoxes[.., 0..2].min(axis: 0),
+                (ndarray<int>)boundingBoxes[.., 2..4].max(axis: 0),
+            }, axis: -1);
+
+            int maxLtrans = maxBBox[0].AsScalar();
+            int maxUtrans = maxBBox[1].AsScalar();
+            int maxRtrans = width - maxBBox[2].AsScalar();
+            int maxDtrans = height - maxBBox[3].AsScalar();
+
+            cropXMin = Math.Max(0, maxBBox[0].AsScalar() - random.Value.Next(maxLtrans));
+            cropYMin = Math.Max(0, maxBBox[1].AsScalar() - random.Value.Next(maxUtrans));
+            cropXMax = Math.Min(width, maxBBox[2].AsScalar() + random.Value.Next(maxRtrans));
+            cropYMax = Math.Min(height, maxBBox[3].AsScalar() + random.Value.Next(maxDtrans));
+        }
+
         public static Entry<T> RandomTranslate<T>(Entry<T> entry) where T : unmanaged {
             if (random.Value.Next(2) == 0)
                 return entry;
 
             int h = entry.Image.shape.Item1, w = entry.Image.shape.Item2;
-            ndarray<int> maxBBox = np.concatenate(new[] {
-                (ndarray<int>)entry.BoundingBoxes[.., 0..2].min(axis: 0),
-                (ndarray<int>)entry.BoundingBoxes[.., 2..4].max(axis: 0),
-            }, axis: -1);
+            GetRandomTranslation(entry.BoundingBoxes, h, w, out int tx, out int ty);
 
-            int maxLtrans = maxBBox[0].AsScalar();
-            int maxUtrans = maxBBox[1].AsScalar();
-            int maxRtrans = w - maxBBox[2].AsScalar();
-            int maxDtrans = h - maxBBox[3].AsScalar();
-
-            // TODO: use numpy.random.uniform for reproducibility?
-            var (min, max) = Sort(-(maxLtrans - 1), maxRtrans - 1);
-            int tx = random.Value.Next(minValue: min, maxValue: max);
-            (min, max) = Sort(-(maxUtrans - 1), maxDtrans - 1);
-            int ty = random.Value.Next(minValue: min, maxValue: max);
             entry.Image = TranslateImage(entry.Image, tx: tx, ty: ty);
             entry.BoundingBoxes[(.., new[] { 0, 2 })] += tx;
             entry.BoundingBoxes[(.., new[] { 1, 3 })] += ty;
 
             return entry;
+        }
+
+        public static ClrEntry RandomTranslate(ClrEntry entry) {
+            if (random.Value.Next(2) == 0)
+                return entry;
+
+            GetRandomTranslation(entry.BoundingBoxes,
+                                 height: entry.Image.Height, width: entry.Image.Width,
+                                 out int tx, out int ty);
+
+            if (tx == 0 && ty == 0) return entry;
+
+            var rect = new Rectangle(-tx, -ty, entry.Image.Width, entry.Image.Height);
+            Debug.WriteLine("Can't crop properly");
+            // entry.Image.Mutate(x => x.Crop(rect));
+            entry.BoundingBoxes[(.., new[] { 0, 2 })] += tx;
+            entry.BoundingBoxes[(.., new[] { 1, 3 })] += ty;
+
+            return entry;
+        }
+
+        static void GetRandomTranslation(ndarray<int> boundingBoxes, int height, int width,
+                                            out int tx, out int ty) {
+            ndarray<int> maxBBox = np.concatenate(new[] {
+                (ndarray<int>)boundingBoxes[.., 0..2].min(axis: 0),
+                (ndarray<int>)boundingBoxes[.., 2..4].max(axis: 0),
+            }, axis: -1);
+
+            int maxLtrans = maxBBox[0].AsScalar();
+            int maxUtrans = maxBBox[1].AsScalar();
+            int maxRtrans = width - maxBBox[2].AsScalar();
+            int maxDtrans = height - maxBBox[3].AsScalar();
+
+            // TODO: use numpy.random.uniform for reproducibility?
+            var (min, max) = Sort(-(maxLtrans - 1), maxRtrans - 1);
+            tx = random.Value.Next(minValue: min, maxValue: max);
+            (min, max) = Sort(-(maxUtrans - 1), maxDtrans - 1);
+            ty = random.Value.Next(minValue: min, maxValue: max);
         }
 
         static (int, int) Sort(int a, int b) => (Math.Min(a, b), Math.Max(a, b));
@@ -217,17 +281,34 @@
             string[] line = annotation.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             string imagePath = line[0];
             ndarray<byte> image = ImageTools.LoadRGB8(imagePath).ToNumPyArray();
-            var bboxes = (ndarray<int>)np.array(line.Slice(1..).Select(box =>
-                box
-                    .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => int.Parse(s, CultureInfo.InvariantCulture))
-                    .ToArray()));
+            ndarray<int> bboxes = LoadBBoxes(line.Slice(1..));
 
             return new Entry<byte> {
                 Image = image,
                 BoundingBoxes = bboxes,
             };
         }
+
+        public static ClrEntry LoadAnnotationClr(string annotation) {
+            if (annotation is null) throw new ArgumentNullException(nameof(annotation));
+
+            string[] line = annotation.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            string imagePath = line[0];
+            var image = Image.Load<Rgb24>(imagePath);
+            ndarray<int> bboxes = LoadBBoxes(line.Slice(1..));
+
+            return new ClrEntry {
+                Image = image,
+                BoundingBoxes = bboxes,
+            };
+        }
+
+        static ndarray<int> LoadBBoxes(string[] bboxTexts)
+            => (ndarray<int>)np.array(bboxTexts
+                .Select(box =>box
+                             .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                             .Select(s => int.Parse(s, CultureInfo.InvariantCulture))
+                             .ToArray()));
 
         public static Entry<T> RandomlyApplyAugmentations<T>(Entry<T> entry) where T : unmanaged {
             entry = RandomHorizontalFlip(entry);
@@ -236,11 +317,18 @@
             return entry;
         }
 
-        public static Entry<float> Preprocess(Entry<float> entry, Size targetSize)
+        public static ClrEntry RandomlyApplyAugmentations(ClrEntry entry) {
+            entry = RandomHorizontalFlip(entry);
+            entry = RandomCrop(entry);
+            entry = RandomTranslate(entry);
+            return entry;
+        }
+
+        public static Entry<float> Preprocess(ClrEntry entry, Size targetSize)
             => ImageTools.YoloPreprocess(entry, targetSize);
 
-        static readonly Python.Runtime.PyObject ellipsis;
-        static ndarray<float> BBoxIOU(ndarray<float> boxes1, ndarray<float> boxes2) {
+        static readonly PyObject ellipsis;
+        internal static ndarray<float> BBoxIOU(ndarray<float> boxes1, ndarray<float> boxes2) {
             var area1 = boxes1[(ellipsis, 2)] * boxes1[(ellipsis, 3)];
             var area2 = boxes1[(ellipsis, 2)] * boxes1[(ellipsis, 3)];
 
@@ -262,15 +350,15 @@
 
             return (intersectionArea / unionArea).AsArray();
         }
-        (ndarray<float>[], ndarray<float>[]) PreprocessTrueBoxes(ndarray<int> bboxes, uint[] outputSizes) {
+        (ndarray<float>[], ndarray<float>[]) PreprocessTrueBoxes(ndarray<int> bboxes, int[] outputSizes) {
             var label = outputSizes
-                .Select(size => np.zeros<float>(new ulong[] {
-                        size, size, this.anchorsPerScale, 5 + this.ClassCount }))
+                .Select(size => np.zeros<float>(
+                        size, size, this.anchorsPerScale, 5 + this.ClassCount))
                 .ToArray();
             var bboxesXYWH = outputSizes
-                .Select(_ => np.zeros<float>(new ulong[] { this.maxBBoxPerScale, 4 }))
+                .Select(_ => np.zeros<float>(this.maxBBoxPerScale, 4))
                 .ToArray();
-            var bboxCount = np.zeros<int>((ulong)outputSizes.Length);
+            var bboxCount = np.zeros<int>(outputSizes.Length);
             var stridesPlus = np.array(this.strides)[(.., np.newaxis)].AsArray<int>().AsType<float>();
 
             foreach (ndarray<int> bbox in bboxes) {
@@ -293,7 +381,7 @@
                 }, axis: -1);
                 var bboxXYWHScaled = (1.0f * bboxXYWH[(np.newaxis, ..)] / stridesPlus).AsArray();
 
-                var iou = new List<object>();
+                var iou = new List<ndarray<float>>();
 
                 void UpdateBoxesAtScale(int scale, object iouMaskOrIndex) {
                     var indices = bboxXYWHScaled[scale, 0..2].AsType<int>();
@@ -311,7 +399,7 @@
 
                 bool positiveExists = false;
                 for (int scaleIndex = 0; scaleIndex < outputSizes.Length; scaleIndex++) {
-                    uint outputSize = outputSizes[scaleIndex];
+                    int outputSize = outputSizes[scaleIndex];
                     var anchorsXYWH = np.zeros<float>(this.anchorsPerScale, 4);
                     anchorsXYWH[.., 0..2] = anchorsXYWH[.., 0..2].AsType<int>().AsType<float>() + 0.5f;
                     anchorsXYWH[.., 2..4] = this.anchors[scaleIndex].AsArray();
@@ -329,7 +417,7 @@
                 }
 
                 if (!positiveExists) {
-                    int bestAnchorIndex = np.array(iou).reshape(-1).argmax(axis: -1).AsScalar<int>();
+                    int bestAnchorIndex = (int)np.array(iou).reshape(-1).argmax(axis: -1).AsScalar<long>();
                     int bestDetection = bestAnchorIndex / (int)this.anchorsPerScale;
                     int bestAnchor = bestAnchorIndex % (int)this.anchorsPerScale;
 
@@ -352,12 +440,44 @@
             public ndarray<int> BoundingBoxes { get; set; }
         }
 
+        public struct ClrEntry {
+            public Image<Rgb24> Image { get; set; }
+            public ndarray<int> BoundingBoxes { get; set; }
+
+            public Entry<float> ToNumPyEntry() {
+                var numpyImage = np.zeros<byte>(this.Image.Height, this.Image.Width * 3);
+                for(int y = 0; y < this.Image.Height; y++) {
+                    var row = this.Image.GetPixelRowMemory(y);
+                    numpyImage[y] = MarshalingExtensions.ToNumPyArray<byte>(
+                        MemoryMarshal.Cast<Rgb24, byte>(row.Span));
+                }
+                return new Entry<float> {
+                    Image = ((ndarray<byte>)numpyImage.reshape(new[] { this.Image.Height, this.Image.Width, 3 }))
+                            .AsType<float>(),
+                    BoundingBoxes = this.BoundingBoxes,
+                };
+            }
+        }
+
         public static class Entry {
             public static (Range, int[]) AllHorizontal { get; } = (.., new[] { 0, 2 });
             public static (Range, int[]) AllVertical { get; } = (.., new[] { 1, 3 });
         }
 
         static bool NotPositive(int value) => value <= 0;
+
+        public static ndarray<float> ParseAnchors(string anchors)
+            => anchors.Split(',')
+                .Select(coord => float.Parse(coord.Trim(), CultureInfo.InvariantCulture))
+                .ToNumPyArray()
+                .reshape(new[] { 3, 3, 2 })
+                .AsArray<float>();
+
+        public static ndarray<float> ParseAnchors(IEnumerable<int> anchors)
+            => anchors.ToNumPyArray()
+                .reshape(new[] { 3, 3, 2 })
+                .AsArray<int>()
+                .AsType<float>();
 
         static ObjectDetectionDataset() {
             using var _ = Py.GIL();

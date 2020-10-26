@@ -1,4 +1,4 @@
-﻿namespace tensorflow.keras {
+﻿namespace tensorflow {
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -34,5 +34,21 @@
                 .Select(l => l.Trim())
                 .Where(l => !string.IsNullOrEmpty(l))
                 .ToArray();
+
+        public static void Deconstruct<T>(this T[] array, out T i0, out T i1, out T i2, out T i3) {
+            if (array is null) throw new ArgumentNullException(nameof(array));
+            if (array.Length != 4) throw new ArgumentException();
+
+            i0 = array[0];
+            i1 = array[1];
+            i2 = array[2];
+            i3 = array[3];
+        }
+
+        public static IEnumerable<(int, T)> Enumerate<T>(params T[] items)
+            => items.Select((index, item) => (item, index));
+
+        public static IEnumerable<T> BufferAsync<T>(this IEnumerable<T> enumerable, int bufferSize)
+            => new BufferedEnumerable<T>(enumerable, bufferSize);
     }
 }

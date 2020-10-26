@@ -19,7 +19,7 @@
             string padding = "same";
 
             if (downsample) {
-                convolutionInput = ZeroPadding2D.NewDyn(padding: ((1, 0), (1, 0))).__call__(input);
+                convolutionInput = ZeroPadding2D.NewDyn(padding: ((1, 0), (1, 0))).__call___dyn(input);
                 padding = "valid";
                 strides = 2;
             }
@@ -30,7 +30,7 @@
                                   kernel_regularizer: tf.keras.regularizers.l2(0.0005),
                                   kernel_initializer: new random_normal_initializer(stddev: 0.01),
                                   bias_initializer: new constant_initializer(0.0))
-                .__call__(convolutionInput);
+                .__call___dyn(convolutionInput);
 
             if (batchNorm)
                 conv = new FreezableBatchNormalization().__call__(conv);
