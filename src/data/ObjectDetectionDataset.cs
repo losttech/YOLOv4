@@ -96,7 +96,7 @@
                     .ToArray();
 
                 for (int itemNo = 0; itemNo < batchSize; itemNo++) {
-                    int index = totalBatches * batchSize + itemNo;
+                    int index = batchNo * batchSize + itemNo;
                     // loop the last few items for the last batch if necessary
                     if (index >= this.Count) index -= this.Count;
                     string annotation = this.annotations[index];
