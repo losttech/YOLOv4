@@ -22,15 +22,16 @@
         public ndarray<float> Anchors { get; set; } = ObjectDetectionDataset.ParseAnchors(YOLOv4.Anchors.ToArray());
         public int AnchorsPerScale { get; set; } = YOLOv4.AnchorsPerScale;
         public int[] Strides { get; set; } = YOLOv4.Strides.ToArray();
+        public bool LogDevicePlacement { get; set; }
 
         public override int Run(string[] remainingArguments) {
             tf.enable_eager_execution();
 
+            tf.debugging.set_log_device_placement(this.LogDevicePlacement);
+
             dynamic config = config_pb2.ConfigProto.CreateInstance();
             config.gpu_options.allow_growth = true;
             tf.keras.backend.set_session(Session.NewDyn(config: config));
-
-            tf.keras.mixed_precision.experimental.set_policy("infer_with_float32_vars");
 
             var dataset = new ObjectDetectionDataset(this.Annotations,
                 classNames: this.ClassNames,
@@ -61,6 +62,8 @@
                 filePath => this.ClassNames = Tools.NonEmptyLines(filePath));
             this.HasOption("batch-size=", "Batch size during training",
                 (int size) => this.BatchSize = size);
+            this.HasOption("log-device-placement", "Enables TensorFlow device placement logging",
+                (string onOff) => this.LogDevicePlacement = onOff == "on");
         }
     }
 }
