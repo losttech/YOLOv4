@@ -48,7 +48,7 @@
         public static IEnumerable<(int, T)> Enumerate<T>(params T[] items)
             => items.Select((index, item) => (item, index));
 
-        public static IEnumerable<T> BufferAsync<T>(this IEnumerable<T> enumerable, int bufferSize)
-            => new BufferedEnumerable<T>(enumerable, bufferSize);
+        public static IEnumerable<T> BufferedEnumerate<T>(this IReadOnlyList<T> list, int bufferSize)
+            => new BufferedEnumerable<T>(list, bufferSize);
     }
 }

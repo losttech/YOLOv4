@@ -3,33 +3,46 @@
     using System.Collections;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading.Tasks;
 
-    class BufferedEnumerable<T>: IEnumerable<T> {
-        readonly IEnumerable<T> wrapped;
+    class BufferedEnumerable<T> : IEnumerable<T> {
+        readonly IReadOnlyList<T> lazyList;
         readonly int bufferSize;
 
-        public BufferedEnumerable(IEnumerable<T> enumerable, int bufferSize) {
-            this.wrapped = enumerable ?? throw new ArgumentNullException(nameof(enumerable));
+        public BufferedEnumerable(IReadOnlyList<T> lazyList, int bufferSize) {
+            this.lazyList = lazyList ?? throw new ArgumentNullException(nameof(lazyList));
             if (bufferSize < 1) throw new ArgumentOutOfRangeException(nameof(bufferSize));
             this.bufferSize = bufferSize;
         }
 
         public IEnumerator<T> GetEnumerator() {
             var buffer = new BlockingCollection<T>(boundedCapacity: this.bufferSize);
-            var enumerator = this.wrapped.GetEnumerator();
-            void PreloadNext() {
-                Task.Run(() => {
-                    if (enumerator.MoveNext()) {
-                        buffer.Add(enumerator.Current);
-                        PreloadNext();
-                    } else {
-                        buffer.CompleteAdding();
-                    }
-                });
+            var readyToRun = new BlockingCollection<Task<T>>(boundedCapacity: this.bufferSize);
+
+            void Load() {
+                while (!readyToRun.IsCompleted) {
+                    var task = readyToRun.Take();
+                    buffer.Add(task.Result);
+                }
+                buffer.CompleteAdding();
             }
-            PreloadNext();
-            return buffer.GetConsumingEnumerable().GetEnumerator();
+
+            void QueueLoading() {
+                for(int i = 0; i < this.lazyList.Count; i++) {
+                    int index = i;
+                    var task = new Task<T>(() => this.lazyList[index]);
+                    readyToRun.Add(task);
+                    task.Start();
+                }
+                readyToRun.CompleteAdding();
+            }
+
+            Task.Run(QueueLoading);
+            Task.Run(Load);
+
+            return buffer.GetConsumingEnumerable()
+                .GetEnumerator();
         }
         IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
     }

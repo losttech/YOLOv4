@@ -2,7 +2,6 @@
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
-    using System.Drawing;
     using System.Globalization;
     using System.IO;
     using System.Linq;
@@ -19,6 +18,7 @@
     using SixLabors.ImageSharp.Processing;
 
     using tensorflow.image;
+
     using Image = SixLabors.ImageSharp.Image;
     using Rectangle = SixLabors.ImageSharp.Rectangle;
     using Size = SixLabors.ImageSharp.Size;
@@ -75,51 +75,86 @@
 
         public void Shuffle() => Tools.Shuffle(this.annotations);
 
-        public IEnumerable<EntryBatch> Batch(int batchSize,
+        public IReadOnlyList<EntryBatch> Batch(int batchSize,
                                              Func<ClrEntry, ClrEntry>? onloadAugmentation) {
             if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
 
-            int totalBatches = (int)Math.Ceiling(this.Count * 1F / batchSize);
-            int[] outputSizes = this.strides.Select(stride => this.inputSize / stride).ToArray();
-            for (int batchNo = 0; batchNo < totalBatches; batchNo++) {
-                //tf does not seem to be use here
-                //using var _ = tf.device("/cpu:0").StartUsing();
-                var batchImages = np.zeros<float>(batchSize, this.inputSize, this.inputSize, 3);
-                var batchBBoxLabels = outputSizes.Select(outputSize
-                    => np.zeros<float>(
-                                       batchSize, outputSize, outputSize,
-                                       this.anchorsPerScale, 5 + this.ClassCount)
-                    ).ToArray();
+            return new BatchList(this, batchSize: batchSize, onloadAugmentation);
+        }
 
-                var batchBBoxes = outputSizes.Select(
-                        _ => np.zeros<float>(batchSize, this.maxBBoxPerScale, 4))
-                    .ToArray();
+        class BatchList: IReadOnlyList<EntryBatch> {
+            readonly ObjectDetectionDataset dataset;
+            public Func<ClrEntry, ClrEntry>? OnloadAugmentation { get; }
+            public int BatchSize { get; }
+            public int Count { get; }
 
-                for (int itemNo = 0; itemNo < batchSize; itemNo++) {
-                    int index = batchNo * batchSize + itemNo;
-                    // loop the last few items for the last batch if necessary
-                    if (index >= this.Count) index -= this.Count;
-                    string annotation = this.annotations[index];
-                    var rawEntry = LoadAnnotationClr(annotation);
-                    if (onloadAugmentation != null)
-                        rawEntry = onloadAugmentation(rawEntry);
-                    var entry = Preprocess(rawEntry, new Size(this.inputSize, this.inputSize));
+            public EntryBatch this[int index] => this.dataset.GetBatch(this.BatchSize, index, this.OnloadAugmentation);
 
-                    var (labes, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
-
-                    batchImages[itemNo, .., .., ..] = entry.Image;
-                    for (int i = 0; i < outputSizes.Length; i++) {
-                        batchBBoxLabels[i][itemNo, .., .., .., ..] = labes[i];
-                        batchBBoxes[i][itemNo, .., ..] = boxes[i];
-                    }
-                }
-
-                yield return new EntryBatch {
-                    Images = batchImages,
-                    BBoxLabels = batchBBoxLabels,
-                    BBoxes = batchBBoxes
-                };
+            public BatchList(ObjectDetectionDataset dataset, int batchSize, Func<ClrEntry, ClrEntry>? onloadAugmentation) {
+                if (dataset is null) throw new ArgumentNullException(nameof(dataset));
+                if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
+                this.dataset = dataset;
+                this.BatchSize = batchSize;
+                this.Count = this.dataset.BatchCount(this.BatchSize);
+                this.OnloadAugmentation = onloadAugmentation;
             }
+
+            public IEnumerator<EntryBatch> GetEnumerator() {
+                for(int batch = 0; batch < this.Count; batch++)
+                    yield return this[batch];
+            }
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => this.GetEnumerator();
+        }
+
+        public int BatchCount(int batchSize) {
+            if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
+            return (int)Math.Ceiling(this.Count * 1F / batchSize);
+        }
+
+        public EntryBatch GetBatch(int batchSize, int batchIndex,
+                                   Func<ClrEntry, ClrEntry>? onloadAugmentation) {
+            if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
+            int totalBatches = this.BatchCount(batchSize);
+            if (batchIndex < 0 || batchIndex >= totalBatches)
+                throw new IndexOutOfRangeException();
+
+            int[] outputSizes = this.strides.Select(stride => this.inputSize / stride).ToArray();
+
+            var batchImages = np.zeros<float>(batchSize, this.inputSize, this.inputSize, 3);
+            var batchBBoxLabels = outputSizes.Select(outputSize
+                => np.zeros<float>(
+                                   batchSize, outputSize, outputSize,
+                                   this.anchorsPerScale, 5 + this.ClassCount)
+                ).ToArray();
+
+            var batchBBoxes = outputSizes.Select(
+                    _ => np.zeros<float>(batchSize, this.maxBBoxPerScale, 4))
+                .ToArray();
+
+            for (int itemNo = 0; itemNo < batchSize; itemNo++) {
+                int index = batchIndex * batchSize + itemNo;
+                // loop the last few items for the last batch if necessary
+                if (index >= this.Count) index -= this.Count;
+                string annotation = this.annotations[index];
+                var rawEntry = LoadAnnotationClr(annotation);
+                if (onloadAugmentation != null)
+                    rawEntry = onloadAugmentation(rawEntry);
+                var entry = Preprocess(rawEntry, new Size(this.inputSize, this.inputSize));
+
+                var (labes, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
+
+                batchImages[itemNo, .., .., ..] = entry.Image;
+                for (int i = 0; i < outputSizes.Length; i++) {
+                    batchBBoxLabels[i][itemNo, .., .., .., ..] = labes[i];
+                    batchBBoxes[i][itemNo, .., ..] = boxes[i];
+                }
+            }
+
+            return new EntryBatch {
+                Images = batchImages,
+                BBoxLabels = batchBBoxLabels,
+                BBoxes = batchBBoxes
+            };
         }
 
         public static string[] LoadAnnotations(TextReader reader) {

@@ -119,7 +119,7 @@
                 var trainLoss = Loss.Zero;
                 foreach (var batch in dataset.Batch(batchSize: batchSize,
                                                     onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations)
-                                      .BufferAsync(bufferSize: Math.Max(Environment.ProcessorCount, batchSize*4))) {
+                                      .BufferedEnumerate(bufferSize: 6)) {
                     trainLoss += TrainStep(batch);
                 }
 
@@ -156,10 +156,9 @@
                 loss += ComputeLoss(pred, conv,
                                     targetLabels: batch.BBoxLabels[scaleIndex],
                                     targetBBoxes: batch.BBoxes[scaleIndex],
-                                    strides: strides,
+                                    strideSize: strides[scaleIndex],
                                     classCount: classCount,
-                                    intersectionOverUnionLossThreshold: DefaultIntersectionOverUnionLossThreshold,
-                                    scaleIndex: scaleIndex);
+                                    intersectionOverUnionLossThreshold: DefaultIntersectionOverUnionLossThreshold);
             }
 
             return loss;
@@ -217,12 +216,11 @@
 
         static Loss ComputeLoss(Tensor pred, Tensor conv,
                                 ndarray<float> targetLabels, ndarray<float> targetBBoxes,
-                                ReadOnlySpan<int> strides, int classCount,
-                                float intersectionOverUnionLossThreshold,
-                                int scaleIndex) {
+                                int strideSize, int classCount,
+                                float intersectionOverUnionLossThreshold) {
             int batchSize = conv.shape[0];
             int outputSize = conv.shape[1];
-            float inputSize = strides[scaleIndex] * outputSize;
+            float inputSize = strideSize * outputSize;
 
             conv = tf.reshape(conv, new[] { batchSize, outputSize, outputSize, 3, 5 + classCount });
 
@@ -234,7 +232,7 @@
 
             var labelXYWH = tf.constant(targetLabels[.., .., .., .., 0..4]);
             var respondBBox = tf.constant(targetLabels[.., .., .., .., 4..5]);
-            var labelProb = targetLabels[.., .., .., .., 5..];
+            var labelProb = tf.constant(targetLabels[.., .., .., .., 5..]);
 
             var generalizedIntersectionOverUnion = tf.expand_dims(
                 BBoxGeneralizedIntersectionOverUnion(predXYWH, labelXYWH),
@@ -260,7 +258,7 @@
                 +
                 respondBackground * tf.nn.sigmoid_cross_entropy_with_logits(labels: respondBBox, logits: convRawConf));
 
-            Tensor probLoss = respondBBox * tf.nn.sigmoid_cross_entropy_with_logits(labels: tf.constant(labelProb), logits: convRawProb);
+            Tensor probLoss = respondBBox * tf.nn.sigmoid_cross_entropy_with_logits(labels: labelProb, logits: convRawProb);
 
             generalizedIntersectionOverUnionLoss = tf.reduce_mean(tf.reduce_sum(generalizedIntersectionOverUnionLoss, axis: new[] { 1, 2, 3, 4 }));
             confLoss = tf.reduce_mean(tf.reduce_sum(confLoss, axis: new[] { 1, 2, 3, 4 }));
@@ -350,14 +348,14 @@
             Tensor[] raws = tf.split(convOut, new[] { 2, 2, 1, classCount }, axis: -1);
             var (convRawDxDy, convRawDwDh, convRawConf, convRawProb) = raws;
 
-            Tensor x = tf.tile(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 0),
-                tf.stack(new object[] { outputSize, 1 }, name: "multiples_x"));
-            Tensor y = tf.tile(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 1),
-                tf.stack(new object[] { 1, outputSize }, name: "multiples_y"));
+            Tensor x = tf.tile_dyn(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 0),
+                                   new object[] { outputSize, 1 });
+            Tensor y = tf.tile_dyn(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 1),
+                                   new object[] { 1, outputSize });
             Tensor xyGrid = tf.expand_dims(tf.stack(new[] { x, y }, axis: -1), axis: 2); // [gx, gy, 1, 2]
 
-            xyGrid = tf.tile(tf.expand_dims(xyGrid, axis: 0),
-                             multiples: tf.stack(new object[] { batchSize, 1, 1, 3, 1 }, name: "multiples_xyGrid"));
+            xyGrid = tf.tile_dyn(tf.expand_dims(xyGrid, axis: 0),
+                                 new object[] { batchSize, 1, 1, 3, 1 });
             xyGrid = tf.cast(xyGrid, tf.float32);
 
             var predictedXY = ((tf.sigmoid(convRawDxDy) * xyScale[scaleIndex]) - 0.5 * (xyScale[scaleIndex] - 1) + xyGrid) * strides[scaleIndex];
