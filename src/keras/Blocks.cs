@@ -63,7 +63,10 @@
                         filter1: filter1, filter2: filter2,
                         activation: TunedLeakyRelu);
 
-        public static Tensor Upsample(Tensor input)
-            => tf.image.resize(input, new [] { input.shape[1] * 2, input.shape[2] * 2 }, method: ResizeMethod.NEAREST_NEIGHBOR);
+        public static Tensor Upsample(Tensor input) {
+            var shape = tf.shape(input);
+            return tf.image.resize(input, new[] { shape[1] * 2, shape[2] * 2 },
+                                   method: ResizeMethod.NEAREST_NEIGHBOR);
+        }
     }
 }
