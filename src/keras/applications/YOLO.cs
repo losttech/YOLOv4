@@ -15,7 +15,7 @@
     using tensorflow.summary;
 
     public static class YOLO {
-        public static Model Train(IOptimizer optimizer, ObjectDetectionDataset dataset,
+        public static void Train(Model model, IOptimizer optimizer, ObjectDetectionDataset dataset,
                                  ObjectDetectionDataset? testSet = null,
                                  IEnumerable<ICallback>? callbacks = null,
                                  int batchSize = 2,
@@ -28,8 +28,6 @@
 
             int warmupSteps = warmupEpochs * dataset.Count;
             long totalSteps = (long)(firstStageEpochs + secondStageEpochs) * dataset.Count;
-
-            var model = CreateModel(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
 
             foreach (var callback in callbacks ?? Array.Empty<ICallback>()) {
                 callback.DynamicInvoke<object>("set_model", model);
@@ -137,8 +135,6 @@
                     callback.on_epoch_end(epoch, logs: logs);
                 }
             }
-
-            return model;
         }
 
         public static Loss ComputeLosses(Model model,
@@ -164,7 +160,7 @@
             return loss;
         }
 
-        public static Model CreateModel(int inputSize, int classCount, ReadOnlySpan<int> strides) {
+        public static Model CreateV4(int inputSize, int classCount, ReadOnlySpan<int> strides) {
             if (inputSize <= 0) throw new ArgumentOutOfRangeException(nameof(inputSize));
             if (classCount <= 0) throw new ArgumentOutOfRangeException(nameof(classCount));
 

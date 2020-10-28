@@ -45,12 +45,13 @@
                 anchors: this.Anchors,
                 anchorsPerScale: this.AnchorsPerScale,
                 maxBBoxPerScale: this.MaxBBoxPerScale);
+            var model = YOLO.CreateV4(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
             var optimizer = new Adam();
-            var model = YOLO.Train(optimizer, dataset, batchSize: this.BatchSize,
-                                   callbacks: new ICallback[] {
-                                       new BaseLogger(),
-                                       new TrainingLogger(),
-                                   });
+            YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
+                       callbacks: new ICallback[] {
+                           new BaseLogger(),
+                           new TrainingLogger(),
+                       });
             model.save_weights("yoloV4.weights-trained");
             // the following does not work due to the need to name layers properly
             // https://stackoverflow.com/questions/61402903/unable-to-create-group-name-already-exists
