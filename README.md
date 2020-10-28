@@ -84,7 +84,7 @@ TBD
 
 ### Traning your own model
 
-TBD
+Sample training code available at [samples/TrainV4](samples/TrainV4)
 
 ### References
 
