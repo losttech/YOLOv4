@@ -14,7 +14,7 @@
     using tensorflow.keras.optimizers;
     using tensorflow.summary;
 
-    public static class YOLO {
+    public static partial class YOLO {
         public static void Train(Model model, IOptimizer optimizer, ObjectDetectionDataset dataset,
                                  ObjectDetectionDataset? testSet = null,
                                  IEnumerable<ICallback>? callbacks = null,
@@ -160,7 +160,7 @@
             return loss;
         }
 
-        public static Model CreateV4(int inputSize, int classCount, ReadOnlySpan<int> strides) {
+        public static Model CreateV4Trainable(int inputSize, int classCount, ReadOnlySpan<int> strides) {
             if (inputSize <= 0) throw new ArgumentOutOfRangeException(nameof(inputSize));
             if (classCount <= 0) throw new ArgumentOutOfRangeException(nameof(classCount));
 

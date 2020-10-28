@@ -43,7 +43,7 @@
                 anchors: this.Anchors,
                 anchorsPerScale: this.AnchorsPerScale,
                 maxBBoxPerScale: this.MaxBBoxPerScale);
-            var model = YOLO.CreateV4(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
+            var model = YOLO.CreateV4Trainable(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
             var optimizer = new Adam();
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
