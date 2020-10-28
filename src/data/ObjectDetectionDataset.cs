@@ -266,8 +266,9 @@
             if (tx == 0 && ty == 0) return entry;
 
             var rect = new Rectangle(-tx, -ty, entry.Image.Width, entry.Image.Height);
-            Debug.WriteLine("Can't crop properly");
-            // entry.Image.Mutate(x => x.Crop(rect));
+            var translated = new Image<Rgb24>(entry.Image.Width, entry.Image.Height, Color.Black);
+            translated.Mutate(x => x.DrawImage(entry.Image, new Point(tx, ty), opacity: 1));
+            entry.Image = translated;
             entry.BoundingBoxes[(.., new[] { 0, 2 })] += tx;
             entry.BoundingBoxes[(.., new[] { 1, 3 })] += ty;
 
