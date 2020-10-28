@@ -36,8 +36,6 @@
                 tf.keras.backend.set_session(Session.NewDyn(config: config));
             }
 
-            // TODO: loading dataset silently locks when images are missing
-
             var dataset = new ObjectDetectionDataset(this.Annotations,
                 classNames: this.ClassNames,
                 strides: this.Strides,

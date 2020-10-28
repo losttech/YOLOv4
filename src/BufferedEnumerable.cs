@@ -17,13 +17,13 @@
         }
 
         public IEnumerator<T> GetEnumerator() {
-            var buffer = new BlockingCollection<T>(boundedCapacity: this.bufferSize);
+            var buffer = new BlockingCollection<Task<T>>(boundedCapacity: this.bufferSize);
             var readyToRun = new BlockingCollection<Task<T>>(boundedCapacity: this.bufferSize);
 
             void Load() {
                 while (!readyToRun.IsCompleted) {
                     var task = readyToRun.Take();
-                    buffer.Add(task.Result);
+                    buffer.Add(task);
                 }
                 buffer.CompleteAdding();
             }
@@ -42,6 +42,7 @@
             Task.Run(Load);
 
             return buffer.GetConsumingEnumerable()
+                .Select(t => t.Result)
                 .GetEnumerator();
         }
         IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
