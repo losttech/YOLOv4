@@ -23,15 +23,20 @@
         public int AnchorsPerScale { get; set; } = YOLOv4.AnchorsPerScale;
         public int[] Strides { get; set; } = YOLOv4.Strides.ToArray();
         public bool LogDevicePlacement { get; set; }
+        public bool GpuAllowGrowth { get; set; }
 
         public override int Run(string[] remainingArguments) {
             tf.enable_eager_execution();
 
             tf.debugging.set_log_device_placement(this.LogDevicePlacement);
 
-            dynamic config = config_pb2.ConfigProto.CreateInstance();
-            config.gpu_options.allow_growth = true;
-            tf.keras.backend.set_session(Session.NewDyn(config: config));
+            if (this.GpuAllowGrowth) {
+                dynamic config = config_pb2.ConfigProto.CreateInstance();
+                config.gpu_options.allow_growth = true;
+                tf.keras.backend.set_session(Session.NewDyn(config: config));
+            }
+
+            // TODO: loading dataset silently locks when images are missing
 
             var dataset = new ObjectDetectionDataset(this.Annotations,
                 classNames: this.ClassNames,
@@ -64,6 +69,8 @@
                 (int size) => this.BatchSize = size);
             this.HasOption("log-device-placement", "Enables TensorFlow device placement logging",
                 (string onOff) => this.LogDevicePlacement = onOff == "on");
+            this.HasOption("gpu-allow-growth", "Makes TensorFlow allocate GPU memory as needed (default: reserve all GPU memory)",
+                (string onOff) => this.GpuAllowGrowth = onOff == "on");
         }
     }
 }
