@@ -90,6 +90,7 @@
             }
 
             bool isFreeze = false;
+            // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
             string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
             void SetFreeze(bool freeze) {
                 foreach(string name in freezeLayers) {
@@ -118,6 +119,7 @@
                 foreach (var batch in dataset.Batch(batchSize: batchSize,
                                                     onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations)
                                       .BufferedEnumerate(bufferSize: 6)) {
+                    // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
                     trainLoss += TrainStep(batch);
                 }
 
@@ -267,6 +269,7 @@
             };
         }
 
+        // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/a689606a5a75b22e2363796b996d964cf2c47e77
         static Tensor BBoxIOU(Tensor boxes1, Tensor boxes2) {
             var area1 = boxes1[tf.rest_of_the_axes, 2] * boxes1[tf.rest_of_the_axes, 3];
             var area2 = boxes1[tf.rest_of_the_axes, 2] * boxes1[tf.rest_of_the_axes, 3];
@@ -289,6 +292,7 @@
 
             return tf.maximum(tf.keras.backend.epsilon(), intersectionArea / unionArea);
         }
+        // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/7b3814db72dc3775eda7136186e71ea2c0e777eb
         static Tensor BBoxGeneralizedIntersectionOverUnion(Tensor boxes1, Tensor boxes2) {
             boxes1 = tf.concat(new[]{
                 boxes1[tf.rest_of_the_axes, ..2] - boxes1[tf.rest_of_the_axes, 2..] * 0.5f,
