@@ -44,7 +44,8 @@
                 anchorsPerScale: this.AnchorsPerScale,
                 maxBBoxPerScale: this.MaxBBoxPerScale);
             var model = YOLO.CreateV4Trainable(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
-            var optimizer = new Adam();
+            // https://github.com/AlexeyAB/darknet/issues/1845
+            var optimizer = new Adam(epsilon: 0.000001);
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
