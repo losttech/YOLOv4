@@ -287,7 +287,7 @@
             var intersectionArea = intersection[tf.rest_of_the_axes, 0] * intersection[tf.rest_of_the_axes, 1];
             var unionArea = area1 + area2 - intersectionArea;
 
-            return intersectionArea / unionArea;
+            return tf.maximum(tf.keras.backend.epsilon(), intersectionArea / unionArea);
         }
         static Tensor BBoxGeneralizedIntersectionOverUnion(Tensor boxes1, Tensor boxes2) {
             boxes1 = tf.concat(new[]{
@@ -325,7 +325,7 @@
             Tensor encloseArea = enclose[tf.rest_of_the_axes, 0] * enclose[tf.rest_of_the_axes, 1];
 
             var generalized = intersectionOverUnion - 1f * (encloseArea - unionArea) / encloseArea;
-            return generalized;
+            return tf.maximum(tf.keras.backend.epsilon(), generalized);
         }
 
         static Tensor BoxesArea(Tensor boxes)

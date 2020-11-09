@@ -384,7 +384,7 @@
             var intersectionArea = intersection[(ellipsis, 0)] * intersection[(ellipsis, 1)];
             var unionArea = area1 + area2 - intersectionArea;
 
-            return (intersectionArea / unionArea).AsArray();
+            return np.maximum(float.Epsilon, (intersectionArea / unionArea).AsArray());
         }
         (ndarray<float>[], ndarray<float>[]) PreprocessTrueBoxes(ndarray<int> bboxes, int[] outputSizes) {
             var label = outputSizes
