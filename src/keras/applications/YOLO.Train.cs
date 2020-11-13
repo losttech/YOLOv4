@@ -9,6 +9,7 @@
     using numpy;
 
     using tensorflow.data;
+    using tensorflow.errors;
     using tensorflow.keras.callbacks;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
@@ -115,18 +116,24 @@
                 foreach (var callback in callbacks ?? Array.Empty<ICallback>())
                     callback.on_epoch_begin(epoch);
 
-                var trainLoss = Loss.Zero;
+                var trainLoss = new FinalLoss();
                 foreach (var batch in dataset.Batch(batchSize: batchSize,
                                                     onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations)
                                       .BufferedEnumerate(bufferSize: 6)) {
                     // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
-                    trainLoss += TrainStep(batch);
+                    try {
+                        trainLoss += TrainStep(batch).AsFinal();
+                    } catch (ResourceExhaustedError e) {
+                        System.Diagnostics.Trace.TraceError(e.ToString());
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                    }
                 }
 
-                var testLoss = Loss.Zero;
+                var testLoss = new FinalLoss();
                 if (testSet != null) {
                     foreach (var batch in testSet.Batch(batchSize: batchSize, onloadAugmentation: null))
-                        testLoss += TestStep(batch);
+                        testLoss += TestStep(batch).AsFinal();
                 }
 
                 foreach (var callback in callbacks ?? Array.Empty<ICallback>()) {
@@ -185,21 +192,40 @@
             public Tensor Conf { get; set; }
             public Tensor Prob { get; set; }
 
+            public FinalLoss AsFinal() => new FinalLoss {
+                GIUO = this.GIUO.numpy().AsScalar<float>(),
+                Conf = this.Conf.numpy().AsScalar<float>(),
+                Prob = this.Prob.numpy().AsScalar<float>(),
+            };
+
             public static Loss operator +(Loss a, Loss b) => new Loss {
                 GIUO = a.GIUO + b.GIUO,
                 Conf = a.Conf + b.Conf,
                 Prob = a.Prob + b.Prob,
-            };
-            public static Loss operator /(Loss a, float divisor) => new Loss {
-                GIUO = a.GIUO / divisor,
-                Conf = a.Conf / divisor,
-                Prob = a.Prob / divisor,
             };
 
             public static Loss Zero => new Loss {
                 GIUO = tf.constant(0f),
                 Conf = tf.constant(0f),
                 Prob = tf.constant(0f),
+            };
+        }
+
+        public struct FinalLoss {
+            public float GIUO { get; set; }
+            public float Conf { get; set; }
+            public float Prob { get; set; }
+
+            public static FinalLoss operator +(FinalLoss a, FinalLoss b) => new FinalLoss {
+                GIUO = a.GIUO + b.GIUO,
+                Conf = a.Conf + b.Conf,
+                Prob = a.Prob + b.Prob,
+            };
+
+            public static FinalLoss operator /(FinalLoss a, float divisor) => new FinalLoss {
+                GIUO = a.GIUO / divisor,
+                Conf = a.Conf / divisor,
+                Prob = a.Prob / divisor,
             };
 
             public void Write(IDictionary<string, object?> metrics, string prefix = "") {
