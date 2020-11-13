@@ -141,11 +141,11 @@
                     rawEntry = onloadAugmentation(rawEntry);
                 var entry = Preprocess(rawEntry, new Size(this.inputSize, this.inputSize));
 
-                var (labes, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
+                var (labels, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
 
                 batchImages[itemNo, .., .., ..] = entry.Image;
                 for (int i = 0; i < outputSizes.Length; i++) {
-                    batchBBoxLabels[i][itemNo, .., .., .., ..] = labes[i];
+                    batchBBoxLabels[i][itemNo, .., .., .., ..] = labels[i];
                     batchBBoxes[i][itemNo, .., ..] = boxes[i];
                 }
             }
