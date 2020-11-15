@@ -1,7 +1,6 @@
 ﻿namespace tensorflow.data {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.Globalization;
     using System.IO;
     using System.Linq;
@@ -382,7 +381,7 @@
 
             var intersection = np.maximum(rightDown - leftUp, 0.0f);
             var intersectionArea = intersection[(ellipsis, 0)] * intersection[(ellipsis, 1)];
-            var unionArea = area1 + area2 - intersectionArea;
+            var unionArea = area1 + area2 - intersectionArea + float.Epsilon;
 
             return np.maximum(float.Epsilon, (intersectionArea / unionArea).AsArray());
         }

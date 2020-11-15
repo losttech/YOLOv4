@@ -315,7 +315,8 @@ namespace tensorflow.keras.applications {
 
             var intersection = tf.maximum(rightDown - leftUp, 0.0f);
             var intersectionArea = intersection[tf.rest_of_the_axes, 0] * intersection[tf.rest_of_the_axes, 1];
-            var unionArea = area1 + area2 - intersectionArea;
+            var unionArea = area1 + area2 - intersectionArea
+                            + tf.keras.backend.epsilon();
 
             return tf.maximum(tf.keras.backend.epsilon(), intersectionArea / unionArea);
         }
@@ -340,20 +341,22 @@ namespace tensorflow.keras.applications {
             }, axis: -1);
 
             var boxes1Area = BoxesArea(boxes1);
-            var boxex2Area = BoxesArea(boxes2);
+            var boxes2Area = BoxesArea(boxes2);
 
             Tensor leftUp = tf.maximum(boxes1[tf.rest_of_the_axes, ..2], boxes2[tf.rest_of_the_axes, ..2]);
             Tensor rigthDown = tf.minimum(boxes1[tf.rest_of_the_axes, 2..], boxes2[tf.rest_of_the_axes, 2..]);
 
             Tensor intersection = tf.maximum(rigthDown - leftUp, 0);
             Tensor intersectionArea = intersection[tf.rest_of_the_axes, 0] * intersection[tf.rest_of_the_axes, 1];
-            Tensor unionArea = boxes1Area + boxex2Area - intersectionArea;
+            Tensor unionArea = boxes1Area + boxes2Area - intersectionArea
+                               + tf.keras.backend.epsilon();
             Tensor intersectionOverUnion = intersectionArea / unionArea;
 
             Tensor encloseLeftUp = tf.minimum(boxes1[tf.rest_of_the_axes, ..2], boxes2[tf.rest_of_the_axes, ..2]);
             Tensor encloseRightDown = tf.maximum(boxes1[tf.rest_of_the_axes, 2..], boxes2[tf.rest_of_the_axes, 2..]);
             Tensor enclose = tf.maximum(encloseRightDown - encloseLeftUp, 0);
-            Tensor encloseArea = enclose[tf.rest_of_the_axes, 0] * enclose[tf.rest_of_the_axes, 1];
+            Tensor encloseArea = enclose[tf.rest_of_the_axes, 0] * enclose[tf.rest_of_the_axes, 1]
+                + tf.keras.backend.epsilon();
 
             var generalized = intersectionOverUnion - 1f * (encloseArea - unionArea) / encloseArea;
             return tf.maximum(tf.keras.backend.epsilon(), generalized);
