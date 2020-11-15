@@ -3,6 +3,8 @@
     using System.IO;
     using System.Linq;
 
+    using LostTech.Gradient;
+
     using ManyConsole.CommandLineUtils;
 
     using numpy;
@@ -58,12 +60,16 @@
                 model.summary();
             }
             SummaryWriter? summaryWriter = this.LogDir is null ? null : tf.summary.create_file_writer(this.LogDir);
+            if (summaryWriter != null)
+            {
+                IContextManager<object> summaryContext = summaryWriter.as_default();
+                summaryContext.__enter__();
+            }
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
                            new TrainingLogger(),
                        },
-                       summaryWriter: summaryWriter,
                        testRun: this.TestRun);
             model.save_weights("yoloV4.weights-trained");
             summaryWriter?.close();

@@ -26,7 +26,6 @@
                                  int secondStageEpochs = 30,
                                  float initialLearningRate = 1e-3f,
                                  float finalLearningRate = 1e-6f,
-                                 ISummaryWriter? summaryWriter = null,
                                  bool testRun = false) {
             var globalSteps = new Variable(1, dtype: tf.int64);
 
@@ -91,9 +90,7 @@
 
                         UpdateLearningRate(optimizer, globalSteps, learningRateSchedule);
 
-                        if (summaryWriter != null) {
-                            WriteLosses(optimizer, summaryWriter, globalSteps, stepLoss);
-                        }
+                        WriteLosses(optimizer, globalSteps, stepLoss);
 
                         stepLoss = default;
 
@@ -173,18 +170,15 @@
             return losses;
         }
 
-        static void WriteLosses(IOptimizer optimizer, ISummaryWriter summaryWriter, Variable globalSteps, Loss losses) {
-            IContextManager<object> writerContext = summaryWriter.as_default();
-            using var _ = writerContext.StartUsing();
+        static void WriteLosses(IOptimizer optimizer, Variable globalSteps, Loss losses) {
             // tf v1 does not actually export summary.experimental.set_step
             context.context_().summary_step = globalSteps;
+
             tf.summary.scalar("lr", optimizer.DynamicGet<Variable>("lr"));
             tf.summary.scalar("loss/total_loss", losses.GIUO + losses.Conf + losses.Prob);
             tf.summary.scalar("loss/giou_loss", losses.GIUO);
             tf.summary.scalar("loss/conf_loss", losses.Conf);
             tf.summary.scalar("loss/prob_loss", losses.Prob);
-
-            summaryWriter.flush();
         }
 
         static void UpdateLearningRate(IOptimizer optimizer, Variable step, LearningRateSchedule learningRateSchedule) {
