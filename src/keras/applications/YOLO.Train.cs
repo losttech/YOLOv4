@@ -1,4 +1,4 @@
-﻿namespace tensorflow.keras.applications {
+namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -14,6 +14,7 @@
     using tensorflow.keras.callbacks;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
+    using tensorflow.python.eager.context;
     using tensorflow.summary;
 
     public static partial class YOLO {
@@ -167,15 +168,15 @@
         }
 
         static void WriteLosses(IOptimizer optimizer, ISummaryWriter summaryWriter, Variable globalSteps, Loss losses) {
-            var activeWriter = summaryWriter.as_default();
-            activeWriter.__enter__();
-            tf.summary.experimental.set_step(globalSteps);
+            IContextManager<object> writerContext = summaryWriter.as_default();
+            using var _ = writerContext.StartUsing();
+            // tf v1 does not actually export summary.experimental.set_step
+            context.context_().summary_step = globalSteps;
             tf.summary.scalar("lr", optimizer.DynamicGet<Variable>("lr"));
             tf.summary.scalar("loss/total_loss", losses.GIUO + losses.Conf + losses.Prob);
             tf.summary.scalar("loss/giou_loss", losses.GIUO);
             tf.summary.scalar("loss/conf_loss", losses.Conf);
             tf.summary.scalar("loss/prob_loss", losses.Prob);
-            activeWriter.__exit__(null, null, null);
 
             summaryWriter.flush();
         }
