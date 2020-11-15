@@ -25,6 +25,7 @@
         public int[] Strides { get; set; } = YOLOv4.Strides.ToArray();
         public bool LogDevicePlacement { get; set; }
         public bool GpuAllowGrowth { get; set; }
+        public bool ModelSummary { get; set; }
 
         public override int Run(string[] remainingArguments) {
             Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
@@ -49,6 +50,9 @@
             var model = YOLO.CreateV4Trainable(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
             // https://github.com/AlexeyAB/darknet/issues/1845
             var optimizer = new Adam(epsilon: 0.000001);
+            if (this.ModelSummary){
+                model.summary();
+            }
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
@@ -74,6 +78,8 @@
                 (string onOff) => this.LogDevicePlacement = onOff == "on");
             this.HasOption("gpu-allow-growth", "Makes TensorFlow allocate GPU memory as needed (default: reserve all GPU memory)",
                 (string onOff) => this.GpuAllowGrowth = onOff == "on");
+            this.HasOption("model-summary", "Print model summary before training",
+                (string onOff) => this.ModelSummary = onOff == "on");
         }
     }
 }
