@@ -1,6 +1,7 @@
-﻿namespace tensorflow.keras.applications {
+namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Linq;
 
     using LostTech.Gradient;
@@ -55,7 +56,7 @@
                         optimizer.apply_gradients(gradients.Zip(
                             (PythonList<Variable>)model.trainable_variables, (g, v) => (g, v)));
                     } else {
-                        System.Diagnostics.Debug.WriteLine("NaN/inf loss ignored");
+                        Trace.WriteLine("NaN/inf loss ignored");
                     }
                 }
 

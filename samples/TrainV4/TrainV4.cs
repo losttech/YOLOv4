@@ -1,4 +1,5 @@
 ﻿namespace tensorflow {
+    using System.Diagnostics;
     using System.Linq;
 
     using ManyConsole.CommandLineUtils;
@@ -26,6 +27,8 @@
         public bool GpuAllowGrowth { get; set; }
 
         public override int Run(string[] remainingArguments) {
+            Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
+
             tf.enable_eager_execution();
 
             tf.debugging.set_log_device_placement(this.LogDevicePlacement);
