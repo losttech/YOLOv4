@@ -38,8 +38,7 @@
             foreach (var callback in callbacks ?? Array.Empty<ICallback>()) {
                 callback.DynamicInvoke<object>("set_model", model);
                 callback.DynamicInvoke<object>("set_params", new Dictionary<string, object> {
-                    ["metrics"] = new[] { "loss", "testLoss" }
-                    .SelectMany(prefix => new[]{
+                    ["metrics"] = new[] { "loss", "testLoss" }.SelectMany(prefix => new[]{
                         prefix + nameof(Loss.GIUO),
                         prefix + nameof(Loss.Conf),
                         prefix + nameof(Loss.Prob),

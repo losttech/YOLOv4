@@ -61,10 +61,8 @@
             if (entry.BoundingBoxes != null) {
                 var horIndex = (.., new[] { 0, 2 });
                 var vertIndex = (.., new[] { 1, 3 });
-                entry.BoundingBoxes.__setitem__(horIndex,
-                    value: entry.BoundingBoxes.__getitem__(horIndex) * scale + dw);
-                entry.BoundingBoxes.__setitem__(vertIndex,
-                    value: entry.BoundingBoxes.__getitem__(vertIndex) * scale + dh);
+                entry.BoundingBoxes[horIndex] = (entry.BoundingBoxes[horIndex] * scale).astype(np.int32_fn).AsArray<int>() + dw;
+                entry.BoundingBoxes[vertIndex] = (entry.BoundingBoxes[vertIndex] * scale).astype(np.int32_fn).AsArray<int>() + dh;
             }
 
             return new ObjectDetectionDataset.Entry<float> {
