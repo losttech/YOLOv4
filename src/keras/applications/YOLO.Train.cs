@@ -1,4 +1,4 @@
-namespace tensorflow.keras.applications {
+﻿namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -26,10 +26,13 @@ namespace tensorflow.keras.applications {
                                  float initialLearningRate = 1e-3f,
                                  float finalLearningRate = 1e-6f,
                                  ISummaryWriter? summaryWriter = null) {
-            long globalSteps = 1;
+            var globalSteps = new Variable(1, dtype: tf.int64);
 
-            int warmupSteps = warmupEpochs * dataset.Count;
-            long totalSteps = (long)(firstStageEpochs + secondStageEpochs) * dataset.Count;
+            var learningRateSchedule = new YOLO.LearningRateSchedule(
+                totalSteps: (long)(firstStageEpochs + secondStageEpochs) * dataset.BatchCount(batchSize),
+                warmupSteps: warmupEpochs * dataset.BatchCount(batchSize),
+                initialLearningRate: initialLearningRate,
+                finalLearningRate: finalLearningRate);
 
             foreach (var callback in callbacks ?? Array.Empty<ICallback>()) {
                 callback.DynamicInvoke<object>("set_model", model);
@@ -43,54 +46,6 @@ namespace tensorflow.keras.applications {
                 });
             }
 
-            Loss TrainStep(ObjectDetectionDataset.EntryBatch batch) {
-                var tape = new GradientTape();
-                Loss losses;
-                Tensor totalLoss;
-                using (tape.StartUsing()) {
-                    losses = ComputeLosses(model, batch, dataset.ClassNames.Length, dataset.Strides);
-                    totalLoss = losses.GIUO + losses.Conf + losses.Prob;
-
-                    if (!tf.executing_eagerly() || !tf.logical_or(tf.is_inf(totalLoss), tf.is_nan(totalLoss)).numpy().any()) {
-                        PythonList<Tensor> gradients = tape.gradient(totalLoss, model.trainable_variables);
-                        optimizer.apply_gradients(gradients.Zip(
-                            (PythonList<Variable>)model.trainable_variables, (g, v) => (g, v)));
-                    } else {
-                        Trace.WriteLine("NaN/inf loss ignored");
-                    }
-                }
-
-                globalSteps++;
-
-                double learningRate = globalSteps < warmupSteps
-                    ? globalSteps / (float)warmupSteps * initialLearningRate
-                    : finalLearningRate + 0.5f * (initialLearningRate - finalLearningRate) * (
-                        1 + Math.Cos((globalSteps - warmupSteps) / (totalSteps - warmupSteps) * Math.PI)
-                    );
-                var optimizerLearningRate = optimizer.DynamicGet<Variable>("lr");
-                optimizerLearningRate.assign_dyn(tf.constant(learningRate));
-                if (summaryWriter != null) {
-                    var activeWriter = summaryWriter.as_default();
-                    activeWriter.__enter__();
-                    tf.summary.experimental.set_step(tf.constant(globalSteps));
-                    tf.summary.scalar("lr", learningRate);
-                    tf.summary.scalar("loss/total_loss", totalLoss);
-                    tf.summary.scalar("loss/giou_loss", losses.GIUO);
-                    tf.summary.scalar("loss/conf_loss", losses.Conf);
-                    tf.summary.scalar("loss/prob_loss", losses.Prob);
-                    activeWriter.__exit__(null, null, null);
-
-                    summaryWriter.flush();
-                }
-
-                return losses;
-            }
-
-            Loss TestStep(ObjectDetectionDataset.EntryBatch batch) {
-                var output = model.__call___dyn(batch.Images, new { training = true }.AsKwArgs());
-                return ComputeLosses(model, batch, dataset.ClassNames.Length, dataset.Strides);
-            }
-
             bool isFreeze = false;
             // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
             string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
@@ -100,6 +55,7 @@ namespace tensorflow.keras.applications {
                     Utils.SetTrainableRecursive(layer, !freeze);
                 }
             }
+            int totalBatches = 0;
             foreach (int epoch in Enumerable.Range(0, firstStageEpochs + secondStageEpochs)) {
                 if (epoch < firstStageEpochs) {
                     if (!isFreeze) {
@@ -118,33 +74,116 @@ namespace tensorflow.keras.applications {
                     callback.on_epoch_begin(epoch);
 
                 var trainLoss = new FinalLoss();
+                int allocIssues = 0;
                 foreach (var batch in dataset.Batch(batchSize: batchSize,
                                                     onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations)
                                       .BufferedEnumerate(bufferSize: 6)) {
                     // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
                     try {
-                        trainLoss += TrainStep(batch).AsFinal();
-                    } catch (ResourceExhaustedError e) {
-                        System.Diagnostics.Trace.TraceError(e.ToString());
+                        var stepLoss = TrainStep(batch, model, optimizer, dataset.ClassNames.Length, dataset.Strides);
+                        trainLoss += stepLoss.AsFinal();
+
+                        globalSteps.assign_add_dyn(1);
+
+                        UpdateLearningRate(optimizer, globalSteps, learningRateSchedule);
+
+                        if (summaryWriter != null) {
+                            WriteLosses(optimizer, summaryWriter, globalSteps, stepLoss);
+                        }
+
+                        totalBatches++;
+
+                        stepLoss = default;
+
                         GC.Collect();
                         GC.WaitForPendingFinalizers();
+
+                        allocIssues = 0;
+                    } catch (ResourceExhaustedError e) {
+                        allocIssues++;
+                        Trace.TraceError(e.ToString());
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+
+                        if (allocIssues > 10) {
+                            throw;
+                        }
                     }
                 }
 
                 var testLoss = new FinalLoss();
                 if (testSet != null) {
                     foreach (var batch in testSet.Batch(batchSize: batchSize, onloadAugmentation: null))
-                        testLoss += TestStep(batch).AsFinal();
+                        try {
+                            testLoss += TestStep(batch, model, dataset.ClassNames.Length, dataset.Strides).AsFinal();
+
+                            GC.Collect();
+                            GC.WaitForPendingFinalizers();
+
+                            allocIssues = 0;
+                        } catch (ResourceExhaustedError e) {
+                            allocIssues++;
+                            Trace.TraceError(e.ToString());
+                            GC.Collect();
+                            GC.WaitForPendingFinalizers();
+                            if (allocIssues > 10) {
+                                throw;
+                            }
+                        }
                 }
 
                 foreach (var callback in callbacks ?? Array.Empty<ICallback>()) {
                     var logs = new Dictionary<string, object?>();
-                    (trainLoss / dataset.Count).Write(logs, "loss");
+                    (trainLoss / dataset.BatchCount(batchSize)).Write(logs, "loss");
                     if (testSet != null)
                         (testLoss / testSet.Count).Write(logs, "testLoss");
                     callback.on_epoch_end(epoch, logs: logs);
                 }
             }
+        }
+
+        static Loss TestStep(ObjectDetectionDataset.EntryBatch batch, Model model, int classCount, ReadOnlySpan<int> strides) {
+            return ComputeLosses(model, batch, classCount, strides);
+        }
+
+        static Loss TrainStep(ObjectDetectionDataset.EntryBatch batch, Model model, IOptimizer optimizer, int classCount, ReadOnlySpan<int> strides) {
+            var tape = new GradientTape();
+            Loss losses;
+            Tensor totalLoss;
+            using (tape.StartUsing()) {
+                losses = ComputeLosses(model, batch, classCount, strides);
+                totalLoss = losses.GIUO + losses.Conf + losses.Prob;
+
+                if (!tf.executing_eagerly() || !tf.logical_or(tf.is_inf(totalLoss), tf.is_nan(totalLoss)).numpy().any()) {
+                    PythonList<Tensor> gradients = tape.gradient(totalLoss, model.trainable_variables);
+                    optimizer.apply_gradients(gradients.Zip(
+                        (PythonList<Variable>)model.trainable_variables, (g, v) => (g, v)));
+                } else {
+                    Trace.TraceWarning("NaN/inf loss ignored");
+                }
+            }
+
+            return losses;
+        }
+
+        static void WriteLosses(IOptimizer optimizer, ISummaryWriter summaryWriter, Variable globalSteps, Loss losses) {
+            var activeWriter = summaryWriter.as_default();
+            activeWriter.__enter__();
+            tf.summary.experimental.set_step(globalSteps);
+            tf.summary.scalar("lr", optimizer.DynamicGet<Variable>("lr"));
+            tf.summary.scalar("loss/total_loss", losses.GIUO + losses.Conf + losses.Prob);
+            tf.summary.scalar("loss/giou_loss", losses.GIUO);
+            tf.summary.scalar("loss/conf_loss", losses.Conf);
+            tf.summary.scalar("loss/prob_loss", losses.Prob);
+            activeWriter.__exit__(null, null, null);
+
+            summaryWriter.flush();
+        }
+
+        static void UpdateLearningRate(IOptimizer optimizer, Variable step, LearningRateSchedule learningRateSchedule) {
+            var learningRate = learningRateSchedule.Get(step: step);
+            var optimizerLearningRate = optimizer.DynamicGet<Variable>("lr");
+            optimizerLearningRate.assign_dyn(learningRate);
         }
 
         public static Loss ComputeLosses(Model model,
@@ -205,11 +244,16 @@ namespace tensorflow.keras.applications {
                 Prob = a.Prob + b.Prob,
             };
 
-            public static Loss Zero => new Loss {
-                GIUO = tf.constant(0f),
-                Conf = tf.constant(0f),
-                Prob = tf.constant(0f),
-            };
+            public static Loss Zero {
+                get {
+                    var zero = tf.constant(0f);
+                    return new Loss {
+                        GIUO = zero,
+                        Conf = zero,
+                        Prob = zero,
+                    };
+                }
+            }
         }
 
         public struct FinalLoss {
