@@ -243,11 +243,11 @@ namespace tensorflow.keras.applications {
                                 ndarray<float> targetLabels, ndarray<float> targetBBoxes,
                                 int strideSize, int classCount,
                                 float intersectionOverUnionLossThreshold) {
-            int batchSize = conv.shape[0];
-            int outputSize = conv.shape[1];
-            float inputSize = strideSize * outputSize;
+            Tensor batchSize = tf.shape(conv)[0];
+            Tensor outputSize = tf.shape(conv)[1];
+            Tensor inputSize = strideSize * outputSize;
 
-            conv = tf.reshape(conv, new[] { batchSize, outputSize, outputSize, 3, 5 + classCount });
+            conv = tf.reshape_dyn(conv, new object[] { batchSize, outputSize, outputSize, 3, 5 + classCount });
 
             var convRawConf = conv[.., .., .., .., 4..5];
             var convRawProb = conv[.., .., .., .., 5..];
@@ -263,7 +263,7 @@ namespace tensorflow.keras.applications {
                 BBoxGeneralizedIntersectionOverUnion(predXYWH, labelXYWH),
                 axis: - 1);
 
-            Tensor bboxLossScale = 2f - 1f * labelXYWH[.., .., .., .., 2..3] * labelXYWH[.., .., .., .., 3..4] / (inputSize * inputSize);
+            Tensor bboxLossScale = 2f - 1f * labelXYWH[.., .., .., .., 2..3] * labelXYWH[.., .., .., .., 3..4] / tf.cast(inputSize * inputSize, tf.float32);
             Tensor generalizedIntersectionOverUnionLoss =
                 respondBBox * bboxLossScale * (1 - generalizedIntersectionOverUnion);
 
