@@ -3,8 +3,6 @@
 
     using LostTech.Gradient.ManualWrappers;
 
-    using tensorflow.keras.layers;
-
     public class YOLOv4 : Model {
         static readonly int[] anchors = new[]{12,16, 19,36, 40,28, 36,75, 76,55, 72,146, 142,110, 192,243, 459,401};
         public static ReadOnlySpan<int> Anchors => anchors;
