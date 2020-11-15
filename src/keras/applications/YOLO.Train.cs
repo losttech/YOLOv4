@@ -1,4 +1,4 @@
-namespace tensorflow.keras.applications {
+﻿namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -26,7 +26,8 @@ namespace tensorflow.keras.applications {
                                  int secondStageEpochs = 30,
                                  float initialLearningRate = 1e-3f,
                                  float finalLearningRate = 1e-6f,
-                                 ISummaryWriter? summaryWriter = null) {
+                                 ISummaryWriter? summaryWriter = null,
+                                 bool testRun = false) {
             var globalSteps = new Variable(1, dtype: tf.int64);
 
             var learningRateSchedule = new YOLO.LearningRateSchedule(
@@ -84,7 +85,9 @@ namespace tensorflow.keras.applications {
                         var stepLoss = TrainStep(batch, model, optimizer, dataset.ClassNames.Length, dataset.Strides);
                         trainLoss += stepLoss.AsFinal();
 
-                        globalSteps.assign_add_dyn(1);
+                        int reportSteps = testRun ? dataset.BatchCount(batchSize) : 1;
+                        globalSteps.assign_add_dyn(reportSteps);
+                        totalBatches += reportSteps;
 
                         UpdateLearningRate(optimizer, globalSteps, learningRateSchedule);
 
@@ -92,14 +95,15 @@ namespace tensorflow.keras.applications {
                             WriteLosses(optimizer, summaryWriter, globalSteps, stepLoss);
                         }
 
-                        totalBatches++;
-
                         stepLoss = default;
 
                         GC.Collect();
                         GC.WaitForPendingFinalizers();
 
                         allocIssues = 0;
+
+                        if (testRun)
+                            break;
                     } catch (ResourceExhaustedError e) {
                         allocIssues++;
                         Trace.TraceError(e.ToString());
@@ -122,6 +126,8 @@ namespace tensorflow.keras.applications {
                             GC.WaitForPendingFinalizers();
 
                             allocIssues = 0;
+                            if (testRun)
+                                break;
                         } catch (ResourceExhaustedError e) {
                             allocIssues++;
                             Trace.TraceError(e.ToString());

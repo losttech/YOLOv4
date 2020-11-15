@@ -1,5 +1,6 @@
 ﻿namespace tensorflow {
     using System.Diagnostics;
+    using System.IO;
     using System.Linq;
 
     using ManyConsole.CommandLineUtils;
@@ -13,6 +14,7 @@
     using tensorflow.keras.callbacks;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
+    using tensorflow.summary;
 
     class TrainV4 : ConsoleCommand {
         public string[] Annotations { get; set; }
@@ -26,6 +28,8 @@
         public bool LogDevicePlacement { get; set; }
         public bool GpuAllowGrowth { get; set; }
         public bool ModelSummary { get; set; }
+        public bool TestRun { get; set; }
+        public string LogDir { get; set; }
 
         public override int Run(string[] remainingArguments) {
             Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
@@ -53,12 +57,16 @@
             if (this.ModelSummary){
                 model.summary();
             }
+            SummaryWriter? summaryWriter = this.LogDir is null ? null : tf.summary.create_file_writer(this.LogDir);
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
                            new TrainingLogger(),
-                       });
+                       },
+                       summaryWriter: summaryWriter,
+                       testRun: this.TestRun);
             model.save_weights("yoloV4.weights-trained");
+            summaryWriter?.close();
             // the following does not work due to the need to name layers properly
             // https://stackoverflow.com/questions/61402903/unable-to-create-group-name-already-exists
             // model.save("yoloV4-trained");
@@ -80,6 +88,14 @@
                 (string onOff) => this.GpuAllowGrowth = onOff == "on");
             this.HasOption("model-summary", "Print model summary before training",
                 (string onOff) => this.ModelSummary = onOff == "on");
+            this.HasOption("log-dir=", "Write training logs to the specified directory",
+                dir => {
+                    dir = Path.GetFullPath(dir);
+                    Directory.CreateDirectory(dir);
+                    this.LogDir = dir;
+                });
+            this.HasOption("test-run", "Only does 1 batch per epoch instead of the entire dataset",
+                (string onOff) => this.TestRun = onOff == "on");
         }
     }
 }
