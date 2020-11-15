@@ -255,9 +255,9 @@ namespace tensorflow.keras.applications {
             var predXYWH = pred[.., .., .., .., 0..4];
             var predConf = pred[.., .., .., .., 4..5];
 
-            var labelXYWH = tf.constant(targetLabels[.., .., .., .., 0..4]);
-            var respondBBox = tf.constant(targetLabels[.., .., .., .., 4..5]);
-            var labelProb = tf.constant(targetLabels[.., .., .., .., 5..]);
+            var labelXYWH = AsTensor(targetLabels[.., .., .., .., 0..4]);
+            var respondBBox = AsTensor(targetLabels[.., .., .., .., 4..5]);
+            var labelProb = AsTensor(targetLabels[.., .., .., .., 5..]);
 
             var generalizedIntersectionOverUnion = tf.expand_dims(
                 BBoxGeneralizedIntersectionOverUnion(predXYWH, labelXYWH),
@@ -269,7 +269,7 @@ namespace tensorflow.keras.applications {
 
             var intersectionOverUnion = BBoxIOU(
                 boxes1: predXYWH[.., .., .., .., tf.newaxis, ..],
-                boxes2: tf.constant(targetBBoxes[.., np.newaxis, np.newaxis, np.newaxis, .., ..]));
+                boxes2: AsTensor(targetBBoxes[.., np.newaxis, np.newaxis, np.newaxis, .., ..]));
 
             var maxIntersectionOverUnion = tf.expand_dims(
                 tf.reduce_max(intersectionOverUnion, axis: new[] { -1 }),
@@ -294,6 +294,12 @@ namespace tensorflow.keras.applications {
                 Conf = confLoss,
                 Prob = probLoss,
             };
+        }
+
+        // workaround for a GIL-related bug in tf.constant_scalar
+        static Tensor<T> AsTensor<T>(IArrayLike<T> numpyValue) {
+            using var _ = Python.Runtime.Py.GIL();
+            return tf.constant_scalar<T>(default(T)).DynamicInvoke<Tensor<T>>("__add__", numpyValue);
         }
 
         // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/a689606a5a75b22e2363796b996d964cf2c47e77
