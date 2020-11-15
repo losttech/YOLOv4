@@ -25,7 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.3-b1261" />
+    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.3" />
+    <PackageReference Include="Gradient.Runtime" Version="0.4.4-D20201028-003-CI" />
     <PackageReference Include="LostTech.NumPy" Version="0.2.2-a5" />
     <PackageReference Include="LostTech.TensorFlow" Version="1.15.0-CI-20201020-001" />
     <!-- The following is recommended for public projects -->
