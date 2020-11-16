@@ -175,7 +175,7 @@
 
             int width = entry.Image.shape.Item2;
             int[] reversedXs = Enumerable.Range(0, width).Reverse().ToArray();
-            entry.Image = (ndarray<T>)entry.Image.__getitem__((.., reversedXs, ..));
+            entry.Image = (ndarray<T>)entry.Image[.., reversedXs, ..];
             entry.BoundingBoxes[.., new[] { 0, 2 }] =
                 width - entry.BoundingBoxes[.., new[] { 2, 0 }];
 
@@ -381,9 +381,10 @@
 
             var intersection = np.maximum(rightDown - leftUp, 0.0f);
             var intersectionArea = intersection[(ellipsis, 0)] * intersection[(ellipsis, 1)];
-            var unionArea = area1 + area2 - intersectionArea + float.Epsilon;
+            var epsilon = new float32(tf.keras.backend.epsilon());
+            var unionArea = np.maximum(area1 + area2 - intersectionArea, epsilon);
 
-            return np.maximum(float.Epsilon, (intersectionArea / unionArea).AsArray());
+            return np.maximum(epsilon, (intersectionArea / unionArea).AsArray<float>());
         }
         (ndarray<float>[], ndarray<float>[]) PreprocessTrueBoxes(ndarray<int> bboxes, int[] outputSizes) {
             var label = outputSizes

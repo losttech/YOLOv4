@@ -365,8 +365,8 @@
 
             var intersection = tf.maximum(rightDown - leftUp, 0.0f);
             var intersectionArea = intersection[tf.rest_of_the_axes, 0] * intersection[tf.rest_of_the_axes, 1];
-            var unionArea = area1 + area2 - intersectionArea
-                            + tf.keras.backend.epsilon();
+            var unionArea = tf.maximum(area1 + area2 - intersectionArea,
+                                       tf.keras.backend.epsilon());
 
             return tf.maximum(tf.keras.backend.epsilon(), intersectionArea / unionArea);
         }
@@ -398,15 +398,15 @@
 
             Tensor intersection = tf.maximum(rigthDown - leftUp, 0);
             Tensor intersectionArea = intersection[tf.rest_of_the_axes, 0] * intersection[tf.rest_of_the_axes, 1];
-            Tensor unionArea = boxes1Area + boxes2Area - intersectionArea
-                               + tf.keras.backend.epsilon();
+            Tensor unionArea = tf.maximum(boxes1Area + boxes2Area - intersectionArea,
+                                          tf.keras.backend.epsilon());
             Tensor intersectionOverUnion = intersectionArea / unionArea;
 
             Tensor encloseLeftUp = tf.minimum(boxes1[tf.rest_of_the_axes, ..2], boxes2[tf.rest_of_the_axes, ..2]);
             Tensor encloseRightDown = tf.maximum(boxes1[tf.rest_of_the_axes, 2..], boxes2[tf.rest_of_the_axes, 2..]);
             Tensor enclose = tf.maximum(encloseRightDown - encloseLeftUp, 0);
-            Tensor encloseArea = enclose[tf.rest_of_the_axes, 0] * enclose[tf.rest_of_the_axes, 1]
-                + tf.keras.backend.epsilon();
+            Tensor encloseArea = tf.maximum(enclose[tf.rest_of_the_axes, 0] * enclose[tf.rest_of_the_axes, 1],
+                                            tf.keras.backend.epsilon());
 
             var generalized = intersectionOverUnion - 1f * (encloseArea - unionArea) / encloseArea;
             return tf.maximum(tf.keras.backend.epsilon(), generalized);
