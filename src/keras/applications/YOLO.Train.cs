@@ -1,4 +1,4 @@
-namespace tensorflow.keras.applications {
+﻿namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -58,6 +58,8 @@ namespace tensorflow.keras.applications {
             }
             int totalBatches = 0;
             foreach (int epoch in Enumerable.Range(0, firstStageEpochs + secondStageEpochs)) {
+                // let 1st batch train with unfrozen layers to initialize them
+                if (totalBatches > 32) {
                     if (epoch < firstStageEpochs) {
                         if (!isFreeze) {
                             isFreeze = true;
@@ -70,6 +72,7 @@ namespace tensorflow.keras.applications {
                             SetFreeze(false);
                         }
                     }
+                }
 
                 foreach (var callback in callbacks ?? Array.Empty<ICallback>())
                     callback.on_epoch_begin(epoch);
