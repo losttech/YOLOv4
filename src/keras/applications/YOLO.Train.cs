@@ -15,7 +15,6 @@
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
     using tensorflow.python.eager.context;
-    using tensorflow.summary;
 
     public static partial class YOLO {
         public static void Train(Model model, IOptimizer optimizer, ObjectDetectionDataset dataset,
@@ -428,18 +427,16 @@
             Tensor[] raws = tf.split(convOut, new[] { 2, 2, 1, classCount }, axis: -1);
             var (convRawDxDy, convRawDwDh, convRawConf, convRawProb) = raws;
 
-            Tensor x = tf.tile_dyn(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 0),
-                                   new object[] { outputSize, 1 });
-            Tensor y = tf.tile_dyn(tf.expand_dims(tf.range(outputSize, dtype: tf.int32), axis: 1),
-                                   new object[] { 1, outputSize });
-            Tensor xyGrid = tf.expand_dims(tf.stack(new[] { x, y }, axis: -1), axis: 2); // [gx, gy, 1, 2]
+            var meshgrid = tf.meshgrid(tf.range_dyn(outputSize), tf.range_dyn(outputSize));
+            meshgrid = tf.expand_dims(tf.stack(meshgrid, axis: -1), axis: 2); // [gx, gy, 1, 2]
+            Tensor xyGrid = tf.tile_dyn(
+                tf.expand_dims(meshgrid, axis: 0),
+                new object[] { tf.shape(convOut)[0], 1, 1, 3, 1 });
 
-            xyGrid = tf.tile_dyn(tf.expand_dims(xyGrid, axis: 0),
-                                 new object[] { batchSize, 1, 1, 3, 1 });
             xyGrid = tf.cast(xyGrid, tf.float32);
 
             var predictedXY = ((tf.sigmoid(convRawDxDy) * xyScale[scaleIndex]) - 0.5 * (xyScale[scaleIndex] - 1) + xyGrid) * strides[scaleIndex];
-            var predictedWH = (tf.exp(convRawDwDh) * anchors[scaleIndex]);
+            var predictedWH = tf.exp(convRawDwDh) * anchors[scaleIndex];
             var predictedXYWH = tf.concat(new[] { predictedXY, predictedWH }, axis: -1);
 
             var predictedConf = tf.sigmoid(convRawConf);
