@@ -57,7 +57,7 @@
             var model = YOLO.CreateV4Trainable(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
             // https://github.com/AlexeyAB/darknet/issues/1845
             var optimizer = new Adam(epsilon: 0.000001);
-            if (this.ModelSummary){
+            if (this.ModelSummary) {
                 model.summary();
             }
 

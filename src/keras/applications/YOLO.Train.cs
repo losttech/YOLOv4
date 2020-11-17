@@ -1,4 +1,4 @@
-﻿namespace tensorflow.keras.applications {
+namespace tensorflow.keras.applications {
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -58,18 +58,18 @@
             }
             int totalBatches = 0;
             foreach (int epoch in Enumerable.Range(0, firstStageEpochs + secondStageEpochs)) {
-                if (epoch < firstStageEpochs) {
-                    if (!isFreeze) {
-                        isFreeze = true;
+                    if (epoch < firstStageEpochs) {
+                        if (!isFreeze) {
+                            isFreeze = true;
 
-                        SetFreeze(true);
+                            SetFreeze(true);
+                        }
+                    } else {
+                        if (isFreeze) {
+                            isFreeze = false;
+                            SetFreeze(false);
+                        }
                     }
-                } else {
-                    if (isFreeze) {
-                        isFreeze = false;
-                        SetFreeze(false);
-                    }
-                }
 
                 foreach (var callback in callbacks ?? Array.Empty<ICallback>())
                     callback.on_epoch_begin(epoch);
@@ -91,6 +91,7 @@
                         UpdateLearningRate(optimizer, globalSteps, learningRateSchedule);
 
                         WriteLosses(optimizer, globalSteps, stepLoss);
+                        summary_ops_v2.scalar("epoch", epoch, step: globalSteps);
 
                         stepLoss = default;
 
