@@ -6,6 +6,7 @@
 
     using LostTech.Gradient;
     using LostTech.Gradient.BuiltIns;
+    using LostTech.Gradient.ManualWrappers;
 
     using numpy;
 
@@ -15,6 +16,7 @@
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
     using tensorflow.python.eager.context;
+    using tensorflow.python.ops.summary_ops_v2;
 
     public static partial class YOLO {
         public static void Train(Model model, IOptimizer optimizer, ObjectDetectionDataset dataset,
@@ -172,11 +174,14 @@
             // tf v1 does not actually export summary.experimental.set_step
             context.context_().summary_step = globalSteps;
 
-            tf.summary.scalar("lr", optimizer.DynamicGet<Variable>("lr"));
-            tf.summary.scalar("loss/total_loss", losses.GIUO + losses.Conf + losses.Prob);
-            tf.summary.scalar("loss/giou_loss", losses.GIUO);
-            tf.summary.scalar("loss/conf_loss", losses.Conf);
-            tf.summary.scalar("loss/prob_loss", losses.Prob);
+            void Scalar(string name, IGraphNodeBase value)
+                => summary_ops_v2.scalar(name, value, step: globalSteps);
+
+            Scalar("lr", optimizer.DynamicGet<Variable>("lr"));
+            Scalar("loss/total_loss", losses.GIUO + losses.Conf + losses.Prob);
+            Scalar("loss/giou_loss", losses.GIUO);
+            Scalar("loss/conf_loss", losses.Conf);
+            Scalar("loss/prob_loss", losses.Prob);
         }
 
         static void UpdateLearningRate(IOptimizer optimizer, Variable step, LearningRateSchedule learningRateSchedule) {
@@ -320,7 +325,7 @@
 
             var respondBackground = (1f - respondBBox) * tf.cast(maxIntersectionOverUnion < intersectionOverUnionLossThreshold, tf.float32);
 
-            var confFocal = tf.pow(respondBBox - predConf, 2);
+            Tensor confFocal = tf.pow(respondBBox - predConf, 2);
             Tensor confLoss = confFocal * (
                 respondBBox * tf.nn.sigmoid_cross_entropy_with_logits(labels: respondBBox, logits: convRawConf)
                 +

@@ -16,6 +16,7 @@
     using tensorflow.keras.callbacks;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
+    using tensorflow.python.ops.summary_ops_v2;
     using tensorflow.summary;
 
     class TrainV4 : ConsoleCommand {
@@ -59,20 +60,25 @@
             if (this.ModelSummary){
                 model.summary();
             }
+
             SummaryWriter? summaryWriter = this.LogDir is null ? null : tf.summary.create_file_writer(this.LogDir);
-            if (summaryWriter != null)
-            {
-                IContextManager<object> summaryContext = summaryWriter.as_default();
-                summaryContext.__enter__();
-            }
+            IContextManager<object> summaryRecordOn = summary_ops_v2.always_record_summaries_dyn();
+            using var _ = summaryRecordOn.StartUsing();
+            IContextManager<object>? summaryContext = summaryWriter?.as_default();
+            summaryContext?.__enter__();
+
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
                            new TrainingLogger(),
                        },
                        testRun: this.TestRun);
+
             model.save_weights("yoloV4.weights-trained");
+
+            summaryContext?.__exit__(null, null, null);
             summaryWriter?.close();
+
             // the following does not work due to the need to name layers properly
             // https://stackoverflow.com/questions/61402903/unable-to-create-group-name-already-exists
             // model.save("yoloV4-trained");
