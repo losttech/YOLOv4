@@ -3,6 +3,7 @@
 /data/dataset/
 
 /samples/TrainV4/TrainLog/
+/samples/TrainV4/Trained/
 /samples/TrainV4/train.err
 /samples/TrainV4/train.out
 
