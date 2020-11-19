@@ -3,9 +3,13 @@
 
     using LostTech.Gradient.ManualWrappers;
 
+    using numpy;
+
     public class YOLOv4 : Model {
-        static readonly int[] anchors = new[]{12,16, 19,36, 40,28, 36,75, 76,55, 72,146, 142,110, 192,243, 459,401};
-        public static ReadOnlySpan<int> Anchors => anchors;
+        static readonly ndarray<int> anchors =
+            new[] { 12, 16, 19, 36, 40, 28, 36, 75, 76, 55, 72, 146, 142, 110, 192, 243, 459, 401 }
+                .ToNumPyArray().reshape(new[] { 3, 3, 2 }).AsArray<int>();
+        public static ndarray<int> Anchors => anchors;
         static readonly int[] strides = { 8, 16, 32 };
         public static ReadOnlySpan<int> Strides => strides;
         static readonly float[] xyScale = { 1.2f, 1.1f, 1.05f };

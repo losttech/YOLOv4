@@ -25,7 +25,7 @@
         public int InputSize { get; set; } = MS_COCO.InputSize;
         public int MaxBBoxPerScale { get; set; } = 150;
         public int BatchSize { get; set; } = 2;
-        public ndarray<float> Anchors { get; set; } = ObjectDetectionDataset.ParseAnchors(YOLOv4.Anchors.ToArray());
+        public ndarray<float> Anchors { get; set; } = YOLOv4.Anchors.AsType<float>();
         public int AnchorsPerScale { get; set; } = YOLOv4.AnchorsPerScale;
         public int[] Strides { get; set; } = YOLOv4.Strides.ToArray();
         public bool LogDevicePlacement { get; set; }

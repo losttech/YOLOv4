@@ -224,10 +224,12 @@
             Tensor input = tf.keras.Input(new TensorShape(inputSize, inputSize, 3));
             var featureMaps = YOLOv4.Apply(input, classCount: classCount);
 
+            var anchors = (Tensor<int>)tf.constant(YOLOv4.Anchors);
+
             var bboxTensors = new PythonList<Tensor>();
             foreach (var (scaleIndex, featureMap) in Tools.Enumerate(featureMaps.SSBox, featureMaps.MBBox, featureMaps.LBBox)) {
                 var bbox = DecodeTrain(featureMap, classCount: classCount,
-                    anchors: YOLOv4.Anchors, strides: strides,
+                    anchors: anchors, strides: strides,
                     scaleIndex: scaleIndex, xyScale: YOLOv4.XYScale);
                 bboxTensors.Add(featureMap);
                 bboxTensors.Add(bbox);
@@ -425,7 +427,7 @@
                 * (boxes[tf.rest_of_the_axes, 3] - boxes[tf.rest_of_the_axes, 1]);
 
         static Tensor DecodeTrain(Tensor convOut, int classCount,
-                                  ReadOnlySpan<int> strides, ReadOnlySpan<int> anchors,
+                                  ReadOnlySpan<int> strides, Tensor<int> anchors,
                                   int scaleIndex, ReadOnlySpan<float> xyScale) {
             var varScope = new variable_scope("scale" + scaleIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
             using var _ = varScope.StartUsing();
@@ -445,7 +447,7 @@
             xyGrid = tf.cast(xyGrid, tf.float32);
 
             var predictedXY = ((tf.sigmoid(convRawDxDy) * xyScale[scaleIndex]) - 0.5 * (xyScale[scaleIndex] - 1) + xyGrid) * strides[scaleIndex];
-            var predictedWH = tf.exp(convRawDwDh) * anchors[scaleIndex];
+            var predictedWH = tf.exp(convRawDwDh) * tf.cast(anchors[scaleIndex], tf.float32);
             var predictedXYWH = tf.concat(new[] { predictedXY, predictedWH }, axis: -1);
 
             var predictedConf = tf.sigmoid(convRawConf);
