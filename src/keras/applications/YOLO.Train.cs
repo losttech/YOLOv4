@@ -228,7 +228,9 @@
 
             var bboxTensors = new PythonList<Tensor>();
             foreach (var (scaleIndex, featureMap) in Tools.Enumerate(featureMaps.SSBox, featureMaps.MBBox, featureMaps.LBBox)) {
+                int featuresOutputSize = (inputSize / 8) >> scaleIndex;
                 var bbox = DecodeTrain(featureMap, classCount: classCount,
+                    outputSize: featuresOutputSize,
                     anchors: anchors, strides: strides,
                     scaleIndex: scaleIndex, xyScale: YOLOv4.XYScale);
                 bboxTensors.Add(featureMap);
@@ -426,34 +428,16 @@
             => (boxes[tf.rest_of_the_axes, 2] - boxes[tf.rest_of_the_axes, 0])
                 * (boxes[tf.rest_of_the_axes, 3] - boxes[tf.rest_of_the_axes, 1]);
 
-        static Tensor DecodeTrain(Tensor convOut, int classCount,
+        static Tensor DecodeTrain(Tensor convOut, int classCount, int outputSize,
                                   ReadOnlySpan<int> strides, Tensor<int> anchors,
                                   int scaleIndex, ReadOnlySpan<float> xyScale) {
-            var varScope = new variable_scope("scale" + scaleIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            using var _ = varScope.StartUsing();
-            Tensor batchSize = tf.shape(convOut)[0];
-            Tensor outputSize = tf.shape(convOut)[1];
+            var predicted = DecodeCommon(convOut,
+                                         classCount: classCount, outputSize: outputSize,
+                                         strides: strides, anchors: anchors,
+                                         scaleIndex: scaleIndex,
+                                         xyScale: xyScale);
 
-            convOut = tf.reshape_dyn(convOut, new object[] { batchSize, outputSize, outputSize, 3, 5 + classCount });
-            Tensor[] raws = tf.split(convOut, new[] { 2, 2, 1, classCount }, axis: -1);
-            var (convRawDxDy, convRawDwDh, convRawConf, convRawProb) = raws;
-
-            var meshgrid = tf.meshgrid(tf.range_dyn(outputSize), tf.range_dyn(outputSize));
-            meshgrid = tf.expand_dims(tf.stack(meshgrid, axis: -1), axis: 2); // [gx, gy, 1, 2]
-            Tensor xyGrid = tf.tile_dyn(
-                tf.expand_dims(meshgrid, axis: 0),
-                new object[] { tf.shape(convOut)[0], 1, 1, 3, 1 });
-
-            xyGrid = tf.cast(xyGrid, tf.float32);
-
-            var predictedXY = ((tf.sigmoid(convRawDxDy) * xyScale[scaleIndex]) - 0.5 * (xyScale[scaleIndex] - 1) + xyGrid) * strides[scaleIndex];
-            var predictedWH = tf.exp(convRawDwDh) * tf.cast(anchors[scaleIndex], tf.float32);
-            var predictedXYWH = tf.concat(new[] { predictedXY, predictedWH }, axis: -1);
-
-            var predictedConf = tf.sigmoid(convRawConf);
-            var predictedProb = tf.sigmoid(convRawProb);
-
-            return tf.concat(new[] { predictedXYWH, predictedConf, predictedProb }, axis: -1);
+            return tf.concat(new[] { predicted.xywh, predicted.conf, predicted.prob }, axis: -1);
         }
 
         static readonly int[] DefaultXYScale = { 1, 1, 1, };

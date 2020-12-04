@@ -52,6 +52,13 @@
             i1 = array[1];
             i2 = array[2];
         }
+        public static void Deconstruct<T>(this T[] array, out T i0, out T i1) {
+            if (array is null) throw new ArgumentNullException(nameof(array));
+            if (array.Length != 2) throw new ArgumentException();
+
+            i0 = array[0];
+            i1 = array[1];
+        }
 
         public static IEnumerable<(int, T)> Enumerate<T>(params T[] items)
             => items.Select((index, item) => (item, index));

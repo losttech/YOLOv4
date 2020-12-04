@@ -1,11 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
+﻿namespace tensorflow.keras.applications {
+    using System;
+    using System.Collections.Generic;
+    using System.ComponentModel;
 
-using LostTech.Gradient;
-using LostTech.Gradient.ManualWrappers;
-
-namespace tensorflow.keras.applications {
+    using LostTech.Gradient;
+    using LostTech.Gradient.ManualWrappers;
     partial class YOLO {
         public class LearningRateSchedule : optimizers.schedules.LearningRateSchedule {
             readonly Tensor totalSteps, warmupSteps, initialLR, finalLR;
