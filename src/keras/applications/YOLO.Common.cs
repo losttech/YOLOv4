@@ -39,7 +39,7 @@
                                                        float scoreThreshold,
                                                        Tensor inputShape) {
             Tensor scoresMax = tf.reduce_max(scores, axis: new[] { -1 });
-            Tensor mask = scoresMax > scoreThreshold;
+            Tensor mask = scoresMax >= scoreThreshold;
             Tensor classBoxes = tf.boolean_mask(xywh, mask);
             Tensor conf = tf.boolean_mask(scores, mask);
 

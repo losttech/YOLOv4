@@ -224,7 +224,7 @@
             Tensor input = tf.keras.Input(new TensorShape(inputSize, inputSize, 3));
             var featureMaps = YOLOv4.Apply(input, classCount: classCount);
 
-            var anchors = (Tensor<int>)tf.constant(YOLOv4.Anchors);
+            var anchors = tf.constant(YOLOv4.Anchors);
 
             var bboxTensors = new PythonList<Tensor>();
             foreach (var (scaleIndex, featureMap) in Tools.Enumerate(featureMaps.SSBox, featureMaps.MBBox, featureMaps.LBBox)) {

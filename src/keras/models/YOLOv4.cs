@@ -15,6 +15,9 @@
         static readonly float[] xyScale = { 1.2f, 1.1f, 1.05f };
         public static ReadOnlySpan<float> XYScale => xyScale;
         public static int AnchorsPerScale => 3;
+        internal static int LayerSize => 110;
+        internal static int[] outputLayers = { 93, 101, 109 };
+        internal static ReadOnlySpan<int> OutputLayers => outputLayers;
 
         public static Output Apply(IGraphNodeBase input, int classCount) {
             if (classCount <= 0)
@@ -79,9 +82,19 @@
         }
 
         public struct Output {
+            internal static string SSBoxLayer => "conv2d_93";
+            internal static string MBBoxLayer => "conv2d_101";
+            internal static string LBBoxLayer => "conv2d_109";
             public Tensor SSBox { get; set; }
             public Tensor MBBox { get; set; }
             public Tensor LBBox { get; set; }
+
+            public static Output Get(Model yoloV4)
+                => new Output {
+                    SSBox = yoloV4.get_layer(SSBoxLayer).output_dyn,
+                    MBBox = yoloV4.get_layer(MBBoxLayer).output_dyn,
+                    LBBox = yoloV4.get_layer(LBBoxLayer).output_dyn,
+                };
         }
     }
 }
