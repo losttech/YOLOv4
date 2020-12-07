@@ -110,6 +110,10 @@
                     Directory.CreateDirectory(dir);
                     this.LogDir = dir;
                 });
+            this.HasOption("transfer-epochs=", "Number of epochs to run to adapt before fine-tuning",
+                (int epochs) => this.FirstStageEpochs = epochs);
+            this.HasOption("training-epochs=", "Number of epochs to run training/fine-tuning for",
+                (int epochs) => this.SecondStageEpochs = epochs);
             this.HasOption("test-run", "Only does 1 batch per epoch instead of the entire dataset",
                 (string onOff) => this.TestRun = onOff == "on");
         }
