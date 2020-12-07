@@ -32,6 +32,8 @@
         public bool GpuAllowGrowth { get; set; }
         public bool ModelSummary { get; set; }
         public bool TestRun { get; set; }
+        public int FirstStageEpochs { get; set; } = 20;
+        public int SecondStageEpochs { get; set; } = 30;
         public string LogDir { get; set; }
 
         public override int Run(string[] remainingArguments) {
@@ -65,9 +67,11 @@
             IContextManager<object> summaryRecordOn = summary_ops_v2.always_record_summaries_dyn();
             using var _ = summaryRecordOn.StartUsing();
             IContextManager<object>? summaryContext = summaryWriter?.as_default();
-            summaryContext?.__enter__();
+            using var _activeContext = summaryContext?.StartUsing();
 
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
+                       firstStageEpochs: this.FirstStageEpochs,
+                       secondStageEpochs: this.SecondStageEpochs,
                        callbacks: new ICallback[] {
                            new BaseLogger(),
                            new TrainingLogger(),
