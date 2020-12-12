@@ -24,13 +24,13 @@
                 strides = 2;
             }
 
-            var conv = new Conv2D(filters: filtersShape[^1], kernel_size: filtersShape[0],
-                                  strides: strides, padding: padding,
-                                  use_bias: !batchNorm,
-                                  kernel_regularizer: tf.keras.regularizers.l2(0.0005),
-                                  kernel_initializer: new random_normal_initializer(stddev: 0.01),
-                                  bias_initializer: new constant_initializer(0.0))
-                .__call___dyn(convolutionInput);
+            var convLayer = new Conv2D(filters: filtersShape[^1], kernel_size: filtersShape[0],
+                                       strides: strides, padding: padding,
+                                       use_bias: !batchNorm,
+                                       kernel_regularizer: tf.keras.regularizers.l2(0.0005),
+                                       kernel_initializer: new random_normal_initializer(stddev: 0.01),
+                                       bias_initializer: new constant_initializer(0.0));
+            var conv = convLayer.__call___dyn(convolutionInput);
 
             if (batchNorm)
                 conv = new FreezableBatchNormalization().__call__(conv);
@@ -66,7 +66,7 @@
         public static Tensor Upsample(Tensor input) {
             var shape = tf.shape(input);
             return tf.image.resize(input, new[] { shape[1] * 2, shape[2] * 2 },
-                                   method: ResizeMethod.NEAREST_NEIGHBOR);
+                                   method: ResizeMethod.BILINEAR);
         }
     }
 }
