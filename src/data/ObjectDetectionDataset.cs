@@ -493,6 +493,20 @@
                     BoundingBoxes = this.BoundingBoxes,
                 };
             }
+
+            public static ClrEntry FromNumPyEntry(Entry<float> entry) {
+                int height = entry.Image.shape.Item1;
+                int width = entry.Image.shape.Item2;
+                var image = new Image<Rgb24>(width: width, height: height);
+                var bytes = entry.Image.reshape(new[] { height, width * 3 });
+                for (int y = 0; y < height; y++) {
+                    var row = MemoryMarshal.Cast<Rgb24, byte>(image.GetPixelRowMemory(y).Span);
+                    var byteRow = bytes[y];
+                    for (int byteOffset = 0; byteOffset < width * 3; byteOffset++)
+                        row[byteOffset] = (byte)(byteRow[byteOffset].AsScalar<float>() * 255);
+                }
+                return new ClrEntry { Image = image, BoundingBoxes = entry.BoundingBoxes };
+            }
         }
 
         public static class Entry {
