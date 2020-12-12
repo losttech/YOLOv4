@@ -65,7 +65,7 @@
 
             route = result;
             route = Conv(route, new[] { 1, 1, 512, 256 });
-            result = Conv(route, new[] { 1, 1, 512, 256 });
+            result = Conv(result, new[] { 1, 1, 512, 256 });
 
             foreach (var _ in Repeat(8))
                 result = Residual(result, 256, 256, 256);
@@ -96,6 +96,7 @@
                 tf.nn.max_pool(result, ksize: 13, padding: "SAME", strides: 1),
                 tf.nn.max_pool(result, ksize: 9, padding: "SAME", strides: 1),
                 tf.nn.max_pool(result, ksize: 5, padding: "SAME", strides: 1),
+                result,
             }, axis: -1);
 
             result = Blocks.Conv(result, new[] { 1, 1, 2048, 512 });
