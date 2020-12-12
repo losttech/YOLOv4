@@ -100,7 +100,7 @@
                 max_output_size_per_class: tf.constant(50),
                 max_total_size: tf.constant(50),
                 iou_threshold: 0.45f,
-                score_threshold: 0.25f
+                score_threshold: 0.20f
                 );
 
             ndarray<float> boxs = suppression[0].numpy();
@@ -108,12 +108,8 @@
             ndarray<float> classes = suppression[2].numpy();
             ndarray<int> detections = suppression[3].numpy();
 
-            if (detections[0].AsScalar() == 0) {
-                Debug.WriteLine("nothing detected");
-                return Array.Empty<ObjectDetectionResult>();
-            }
-
-            return Array.Empty<ObjectDetectionResult>();
+            return ObjectDetectionResult.FromCombinedNonMaxSuppressionBatch(
+                boxs, scores, classes.AsType<int>(), detections[0].AsScalar());
         }
 
         public static ObjectDetectionResult[] Detect(Model detector, Size supportedSize, Image<Rgb24> image) {
