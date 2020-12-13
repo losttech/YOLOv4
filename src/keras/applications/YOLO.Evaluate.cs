@@ -56,16 +56,23 @@
             using var _ = Python.Runtime.Py.GIL();
             var images = input.Image[np.newaxis, np.rest_of_the_axes].AsArray();
 
-            IList<ndarray<float>> prediction = detector(tf.constant(images));
-            //var bbBox = PostProcessBBBox(prediction, YOLOv4.Anchors, YOLOv4.Strides, YOLOv4.XYScale);
-            //dynamic numpy = PythonModuleContainer.Get<np>();
-            //ndarray<float> outputs = numpy.concatenate(bbBox, axis: 0);
-            ////tf.image.combined_non_max_suppression()
-            //var processed = PostProcessBoxes(outputs[np.newaxis].AsArray(), image.Size(), supportedSize.Width, 0.25f);
-            return Array.Empty<ObjectDetectionResult>();
+            IDictionary<string, Tensor> prediction = detector(tf.constant(images));
+            _ArrayLike Get(string name) => prediction["tf_op_layer_" + name].numpy();
+            ndarray<float> boxs = Get(nameof(SelectedBoxesOutput.Boxes)).AsArray<float>();
+            ndarray<float> scores = Get(nameof(SelectedBoxesOutput.Scores)).AsArray<float>();
+            ndarray<long> classes = Get(nameof(SelectedBoxesOutput.Classes)).AsArray<long>();
+            ndarray<int> detections = Get(nameof(SelectedBoxesOutput.Detections)).AsArray<int>();
+
+            return ObjectDetectionResult.FromCombinedNonMaxSuppressionBatch(
+                boxs, scores, classes, detections[0].AsScalar());
         }
 
-        public static ObjectDetectionResult[] DetectRaw(Model rawDetector, Size supportedSize, Image<Rgb24> image) {
+        public static ObjectDetectionResult[] DetectRaw(Model rawDetector,
+                                                        Size supportedSize, int classCount,
+                                                        Image<Rgb24> image,
+                                                        ReadOnlySpan<int> strides, Tensor<int> anchors,
+                                                        ReadOnlySpan<float> xyScale,
+                                                        float scoreThreshold = 0.2f) {
             if (rawDetector is null) throw new ArgumentNullException(nameof(rawDetector));
             if (image is null) throw new ArgumentNullException(nameof(image));
 
@@ -81,13 +88,31 @@
                 MBBox = prediction[1],
                 LBBox = prediction[2],
             };
+            var suppression = SelectBoxes(output, inputSize: supportedSize.Width, classCount: classCount,
+                                          strides: strides, anchors: anchors,
+                                          xyScale: xyScale,
+                                          scoreThreshold: scoreThreshold);
 
-            var pred = ProcessPrediction(inputSize: MS_COCO.InputSize, output,
-                                         classCount: MS_COCO.ClassCount,
-                                         strides: YOLOv4.Strides,
-                                         anchors: tf.constant(YOLOv4.Anchors),
-                                         xyScale: YOLOv4.XYScale,
-                                         scoreThreshold: 0.2f);
+            ndarray<float> boxs = suppression.Boxes.numpy().AsArray<float>();
+            ndarray<float> scores = suppression.Scores.numpy().AsArray<float>();
+            ndarray<long> classes = suppression.Classes.numpy().AsArray<long>();
+            ndarray<int> detections = suppression.Detections.numpy().AsArray<int>();
+
+            return ObjectDetectionResult.FromCombinedNonMaxSuppressionBatch(
+                boxs, scores, classes, detections[0].AsScalar());
+        }
+
+        public static SelectedBoxesOutput
+                      SelectBoxes(YOLOv4.Output featureMaps, int inputSize, int classCount,
+                                  ReadOnlySpan<int> strides, Tensor<int> anchors,
+                                  ReadOnlySpan<float> xyScale,
+                                  float scoreThreshold = 0.2f) {
+            var pred = ProcessPrediction(inputSize: inputSize, featureMaps,
+                                         classCount: classCount,
+                                         strides: strides,
+                                         anchors: anchors,
+                                         xyScale: xyScale,
+                                         scoreThreshold: scoreThreshold);
 
             var boxes = pred[.., .., 0..4];
             var conf = pred[.., .., 4..];
@@ -101,15 +126,13 @@
                 max_total_size: tf.constant(50),
                 iou_threshold: 0.45f,
                 score_threshold: 0.20f
-                );
-
-            ndarray<float> boxs = suppression[0].numpy();
-            ndarray<float> scores = suppression[1].numpy();
-            ndarray<float> classes = suppression[2].numpy();
-            ndarray<int> detections = suppression[3].numpy();
-
-            return ObjectDetectionResult.FromCombinedNonMaxSuppressionBatch(
-                boxs, scores, classes.AsType<int>(), detections[0].AsScalar());
+            );
+            return new SelectedBoxesOutput {
+                Boxes = tf.identity(suppression[0], name: nameof(SelectedBoxesOutput.Boxes)),
+                Scores = tf.identity(suppression[1], name: nameof(SelectedBoxesOutput.Scores)),
+                Classes = tf.cast<long>(suppression[2], name: nameof(SelectedBoxesOutput.Classes)),
+                Detections = tf.identity(suppression[3], name: nameof(SelectedBoxesOutput.Detections)),
+            };
         }
 
         public static ObjectDetectionResult[] Detect(Model detector, Size supportedSize, Image<Rgb24> image) {
@@ -217,6 +240,13 @@
                 scores[.., np.newaxis],
                 classes[.., np.newaxis].AsArray().AsType<float>(),
             }, axis: -1);
+        }
+
+        public struct SelectedBoxesOutput {
+            public Tensor<float> Boxes { get; set; }
+            public Tensor<float> Scores { get; set; }
+            public Tensor<long> Classes { get; set; }
+            public Tensor<int> Detections { get; set; }
         }
     }
 }

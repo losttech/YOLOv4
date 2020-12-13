@@ -9,12 +9,12 @@
         public RectangleF Box { get; set; }
 
         public static ObjectDetectionResult[] FromCombinedNonMaxSuppressionBatch(
-            ndarray<float> boxes, ndarray<float> scores, ndarray<int> classes,
+            ndarray<float> boxes, ndarray<float> scores, ndarray<long> classes,
             int detectionCount) {
             var result = new ObjectDetectionResult[detectionCount];
             for(int detection = 0; detection < detectionCount; detection++) {
                 result[detection] = new ObjectDetectionResult {
-                    Class = classes[0, detection].AsScalar(),
+                    Class = checked((int)classes[0, detection].AsScalar()),
                     Box = ToBox(boxes[0, detection].AsArray()),
                     Score = scores[0, detection].AsScalar(),
                 };

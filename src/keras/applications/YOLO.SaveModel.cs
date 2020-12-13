@@ -3,6 +3,7 @@
     using System.Collections.Generic;
 
     using LostTech.Gradient;
+    using LostTech.Gradient.BuiltIns;
 
     using tensorflow.keras.models;
 
@@ -22,9 +23,14 @@
         public static Model CreateSaveable(int inputSize, Tensor input, YOLOv4.Output featureMaps,
                                           int classCount,
                                           ReadOnlySpan<int> strides, Tensor<int> anchors,
-                                          ReadOnlySpan<float> xyScale,float scoreThreshold) {
-            Tensor pred = ProcessPrediction(inputSize, featureMaps, classCount, strides, anchors, xyScale, scoreThreshold);
-            return new Model(new { inputs = input, outputs = pred }.AsKwArgs());
+                                          ReadOnlySpan<float> xyScale, float scoreThreshold) {
+            var suppression = SelectBoxes(featureMaps, inputSize: inputSize, classCount: classCount,
+                                          strides: strides, anchors: anchors,
+                                          xyScale: xyScale,
+                                          scoreThreshold: scoreThreshold);
+            return new Model(new { inputs = input, outputs = new PythonList<Tensor> {
+                suppression.Boxes, suppression.Scores, suppression.Classes, suppression.Detections,
+            }}.AsKwArgs());
         }
 
         public static Tensor ProcessPrediction(int inputSize, YOLOv4.Output modelOutput, int classCount, ReadOnlySpan<int> strides, Tensor<int> anchors, ReadOnlySpan<float> xyScale, float scoreThreshold) {

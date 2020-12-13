@@ -2,6 +2,7 @@
     using System;
     using System.Collections.Generic;
     using System.Data;
+    using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Windows.Forms;
@@ -20,14 +21,11 @@
     using tensorflow;
     using tensorflow.core.protobuf.config_pb2;
     using tensorflow.datasets.ObjectDetection;
-    using tensorflow.keras;
     using tensorflow.keras.applications;
-    using tensorflow.keras.layers;
-    using tensorflow.keras.models;
 
     public partial class YoloForm : Form {
-        Model model;
-        // dynamic infer;
+        dynamic model;
+        dynamic infer;
         bool loaded;
         public YoloForm() {
             this.InitializeComponent();
@@ -52,10 +50,11 @@
 
             using var image = Image.Load<Rgb24>(this.openPicDialog.FileName);
 
-            // TODO: use non-raw model. Raw is extremely slow
-            ObjectDetectionResult[] detections = YOLO.DetectRaw(this.model,
+            var timer = Stopwatch.StartNew();
+            ObjectDetectionResult[] detections = YOLO.Detect(this.infer,
                 supportedSize: new Size(MS_COCO.InputSize, MS_COCO.InputSize),
                 image: image);
+            timer.Stop();
 
             image.Mutate(context => {
                 var font = SystemFonts.CreateFont("Arial", 16);
@@ -78,7 +77,8 @@
 
             this.pictureBox.Image = new System.Drawing.Bitmap(temp);
 
-            this.Text = string.Join(", ", detections.Select(d => MS_COCO.ClassNames[d.Class]));
+            this.Text = "YOLO " + string.Join(", ", detections.Select(d => MS_COCO.ClassNames[d.Class]))
+                + " in " + timer.ElapsedMilliseconds + "ms";
         }
 
         static PointF TopLeft(RectangleF rect) => new PointF(rect.Left, rect.Top);
@@ -88,26 +88,23 @@
 
         void LoadWeights() {
             while (!this.loaded) {
-                string modelPath = Environment.GetEnvironmentVariable("DETECT_UI_WEIGHTS");
-                if (modelPath is null) {
+                string modelDir = Environment.GetEnvironmentVariable("DETECT_UI_WEIGHTS");
+                if (modelDir is null) {
                     if (this.openWeightsDirDialog.ShowDialog(this) != DialogResult.OK)
                         continue;
 
-                    modelPath = this.openWeightsDirDialog.SelectedPath;
+                    modelDir = this.openWeightsDirDialog.SelectedPath;
                 }
 
                 try {
-                    this.model = YOLO.CreateRaw(inputSize: MS_COCO.InputSize, classCount: MS_COCO.ClassCount);
-                    this.model.summary();
-                    this.model.load_weights(modelPath);
-                    //this.model = tf.saved_model.load_v2(modelDir, tags: tf.saved_model.SERVING);
-                    //this.infer = this.model.signatures["serving_default"];
+                    this.model = tf.saved_model.load_v2(modelDir, tags: tf.saved_model.SERVING);
+                    this.infer = this.model.signatures["serving_default"];
                 } catch (ValueError e) {
                     this.Text = e.Message;
                     continue;
                 }
                 this.loaded = true;
-                this.Text = "YOLO " + modelPath;
+                this.Text = "YOLO " + modelDir;
             }
 
             this.openPic.Enabled = true;
