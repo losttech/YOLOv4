@@ -27,7 +27,8 @@
                                  int secondStageEpochs = 30,
                                  float initialLearningRate = 1e-3f,
                                  float finalLearningRate = 1e-6f,
-                                 bool testRun = false) {
+                                 bool testRun = false,
+                                 bool benchmark = false) {
             var globalSteps = new Variable(1, dtype: tf.int64);
 
             var learningRateSchedule = new YOLO.LearningRateSchedule(
@@ -84,7 +85,7 @@
                                       .BufferedEnumerate(bufferSize: 6)) {
                     // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
                     try {
-                        var stepLoss = TrainStep(batch, model, optimizer, dataset.ClassNames.Length, dataset.Strides);
+                        var stepLoss = TrainStep(batch, model, optimizer, dataset.ClassNames.Length, dataset.Strides, bench: benchmark);
                         trainLoss += stepLoss.AsFinal();
 
                         int reportSteps = testRun ? dataset.BatchCount(batchSize) : 1;
@@ -147,6 +148,8 @@
                         (testLoss / testSet.Count).Write(logs, "testLoss");
                     callback.on_epoch_end(epoch, logs: logs);
                 }
+
+                if (benchmark && epoch == 1) return;
             }
         }
 
@@ -154,7 +157,10 @@
             return ComputeLosses(model, batch, classCount, strides);
         }
 
-        static Loss TrainStep(ObjectDetectionDataset.EntryBatch batch, Model model, IOptimizer optimizer, int classCount, ReadOnlySpan<int> strides) {
+        static Loss TrainStep(ObjectDetectionDataset.EntryBatch batch, Model model, IOptimizer optimizer, int classCount, ReadOnlySpan<int> strides, bool bench=false) {
+            if (bench)
+                return ComputeLosses(model, batch, classCount, strides);
+
             var tape = new GradientTape();
             Loss losses;
             Tensor totalLoss;

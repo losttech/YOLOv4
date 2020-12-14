@@ -1,4 +1,5 @@
 ﻿namespace tensorflow {
+    using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
@@ -32,9 +33,11 @@
         public bool GpuAllowGrowth { get; set; }
         public bool ModelSummary { get; set; }
         public bool TestRun { get; set; }
+        public bool Benchmark { get; set; }
         public int FirstStageEpochs { get; set; } = 20;
         public int SecondStageEpochs { get; set; } = 30;
         public string LogDir { get; set; }
+        public string? WeightsPath { get; set; }
 
         public override int Run(string[] remainingArguments) {
             Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
@@ -62,6 +65,8 @@
             if (this.ModelSummary) {
                 model.summary();
             }
+            if (this.WeightsPath != null)
+                model.load_weights(this.WeightsPath);
 
             SummaryWriter? summaryWriter = this.LogDir is null ? null : tf.summary.create_file_writer(this.LogDir);
             IContextManager<object> summaryRecordOn = summary_ops_v2.always_record_summaries_dyn();
@@ -69,16 +74,22 @@
             IContextManager<object>? summaryContext = summaryWriter?.as_default();
             using var _activeContext = summaryContext?.StartUsing();
 
+            var callbacks = new List<ICallback> {
+                new BaseLogger(),
+                new TrainingLogger(),
+            };
+            if (!this.Benchmark)
+                callbacks.Add(new ModelCheckpoint("yoloV4.weights.{epoch:02d}", save_weights_only: true));
+
             YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
                        firstStageEpochs: this.FirstStageEpochs,
                        secondStageEpochs: this.SecondStageEpochs,
-                       callbacks: new ICallback[] {
-                           new BaseLogger(),
-                           new TrainingLogger(),
-                       },
-                       testRun: this.TestRun);
+                       callbacks: callbacks,
+                       testRun: this.TestRun,
+                       benchmark: this.Benchmark);
 
-            model.save_weights("yoloV4.weights-trained");
+            if (!this.Benchmark && !this.TestRun)
+                model.save_weights("yoloV4.weights-trained");
 
             summaryContext?.__exit__(null, null, null);
             summaryWriter?.close();
@@ -116,6 +127,10 @@
                 (int epochs) => this.SecondStageEpochs = epochs);
             this.HasOption("test-run", "Only does 1 batch per epoch instead of the entire dataset",
                 (string onOff) => this.TestRun = onOff == "on");
+            this.HasOption("weights=", "Path to pretrained model weights",
+                (string path) => this.WeightsPath = path);
+            this.HasOption("benchmark", "Run 1 epoch without training and output losses",
+                (string onOff) => this.Benchmark = onOff == "on");
         }
     }
 }
