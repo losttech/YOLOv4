@@ -30,7 +30,8 @@
         public YoloForm() {
             this.InitializeComponent();
 
-            this.openPicDialog.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            this.openPicDialog.InitialDirectory = Environment.GetEnvironmentVariable("IMG_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
 
             GradientEngine.UseEnvironmentFromVariable();
             TensorFlowSetup.Instance.EnsureInitialized();
