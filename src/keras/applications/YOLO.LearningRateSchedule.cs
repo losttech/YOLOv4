@@ -7,6 +7,9 @@
     using LostTech.Gradient.ManualWrappers;
     partial class YOLO {
         public class LearningRateSchedule : optimizers.schedules.LearningRateSchedule {
+            internal const float defaultInitialLearningRate = 1e-3f;
+            internal const float defaultFinalLearningRate = 1e-6f;
+
             readonly Tensor totalSteps, warmupSteps, initialLR, finalLR;
 
             public long TotalSteps { get; }
@@ -15,8 +18,8 @@
             public float FinalLearningRate { get; }
 
             public LearningRateSchedule(long totalSteps, long warmupSteps,
-                float initialLearningRate = 1e-3f,
-                float finalLearningRate = 1e-6f) {
+                float initialLearningRate = defaultInitialLearningRate,
+                float finalLearningRate = defaultFinalLearningRate) {
                 if (totalSteps <= 0) throw new ArgumentOutOfRangeException(nameof(totalSteps));
                 if (warmupSteps <= 0) throw new ArgumentOutOfRangeException(nameof(warmupSteps));
                 if (!GoodLearningRate(initialLearningRate))
@@ -30,8 +33,8 @@
                 this.FinalLearningRate = finalLearningRate;
 
                 using var _ = Python.Runtime.Py.GIL();
-                this.totalSteps = tf.constant_scalar(totalSteps);
-                this.warmupSteps = tf.constant_scalar(warmupSteps);
+                this.totalSteps = tf.constant_scalar<float>(totalSteps);
+                this.warmupSteps = tf.constant_scalar<float>(warmupSteps);
                 this.initialLR = tf.constant_scalar(initialLearningRate);
                 this.finalLR = tf.constant_scalar(finalLearningRate);
             }
@@ -45,12 +48,11 @@
             [EditorBrowsable(EditorBrowsableState.Advanced)]
             public override dynamic __call__(IGraphNodeBase step)
                 => tf.cond(step < this.warmupSteps,
-                    PythonFunctionContainer.Of<Tensor>(() => tf.cast(step / this.warmupSteps, tf.float32) * this.initialLR),
+                    PythonFunctionContainer.Of<Tensor>(() => (step / this.warmupSteps) * this.initialLR),
                     PythonFunctionContainer.Of<Tensor>(() => this.finalLR
                         + 0.5f * (this.initialLR - this.finalLR)
                             * (1 + tf.cos(
-                                    tf.cast(step - this.warmupSteps, tf.float32)
-                                    / tf.cast(this.totalSteps - this.warmupSteps, tf.float32)
+                                    (step - this.warmupSteps) / (this.totalSteps - this.warmupSteps)
                                     * Math.PI)))
                 );
 
@@ -59,6 +61,9 @@
 
             public override dynamic __call___dyn(object step) => throw new NotImplementedException();
             public override dynamic get_config_dyn() => throw new NotImplementedException();
+
+            public static float DefaultInitialLearningRate => defaultInitialLearningRate;
+            public static float DefaultFinalLearningRate => defaultFinalLearningRate;
         }
     }
 }

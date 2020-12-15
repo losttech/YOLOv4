@@ -11,10 +11,14 @@
     using numpy;
 
     using tensorflow.data;
+    using tensorflow.datasets.ObjectDetection;
     using tensorflow.errors;
     using tensorflow.keras.callbacks;
+    using tensorflow.keras.layers;
+    using tensorflow.keras.losses;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
+    using tensorflow.keras.utils;
     using tensorflow.python.eager.context;
     using tensorflow.python.ops.summary_ops_v2;
 
@@ -153,6 +157,56 @@
             }
         }
 
+        public static void TrainGenerator(Model model, IOptimizer optimizer, ObjectDetectionDataset dataset,
+                                          int firstStageEpochs = 20, int secondStageEpochs = 30,
+                                          IEnumerable<ICallback>? callbacks = null, int batchSize = 2) {
+            callbacks = callbacks?.ToPyList();
+            int[] strides = YOLOv4.Strides.ToArray();
+            int inputSize = 416;
+            int classCount = MS_COCO.ClassCount;
+            var trueLabels = strides
+                .Select((stride, i) => (Tensor<float>)tf.keras.Input(
+                    new TensorShape(inputSize / stride, inputSize / stride, 3, 85),
+                    name: $"label{i}"))
+                .ToArray();
+            var trueBoxes = Enumerable.Range(0, 3)
+                .Select(i => (Tensor<float>)tf.keras.Input(new TensorShape(150, 4), name: $"box{i}"))
+                .ToArray();
+
+            var lossEndpoint = new YoloLossEndpoint(trueLabels: trueLabels, trueBoxes: trueBoxes,
+                                                    strides: strides, classCount: classCount);
+            Tensor loss = lossEndpoint.__call__(model.outputs);
+
+            model = new Model(new {
+                inputs = trueLabels.Concat(trueBoxes).Prepend((Tensor<float>)model.input_dyn),
+                outputs = loss }.AsKwArgs());
+
+            // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
+            string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
+            void SetFreeze(bool freeze) {
+                foreach (string name in freezeLayers) {
+                    var layer = model.get_layer(name);
+                    Utils.SetTrainableRecursive(layer, !freeze);
+                }
+            }
+            var generator = ListLinq.Select(
+                                        dataset.Batch(batchSize: batchSize,
+                                                      onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations),
+                                        batch => batch.ToGeneratorOutput())
+                                   .ToSequence();
+            if (firstStageEpochs > 0) {
+                SetFreeze(true);
+                model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
+                model.fit_generator_dyn(generator, epochs: firstStageEpochs, callbacks: callbacks,
+                                        shuffle: false);
+                SetFreeze(false);
+            }
+            model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
+            model.fit_generator_dyn(generator, epochs: secondStageEpochs, callbacks: callbacks,
+                                    shuffle: false,
+                                    initial_epoch: new ImplicitContainer<object>(firstStageEpochs));
+        }
+
         static Loss TestStep(ObjectDetectionDataset.EntryBatch batch, Model model, int classCount, ReadOnlySpan<int> strides) {
             return ComputeLosses(model, batch, classCount, strides);
         }
@@ -206,7 +260,7 @@
             if (model is null) throw new ArgumentNullException(nameof(model));
             if (classCount <= 0) throw new ArgumentOutOfRangeException(nameof(classCount));
 
-            var output = model.__call___dyn(batch.Images, new { training = true }.AsKwArgs());
+            IList<Tensor> output = model.__call___dyn(batch.Images, new { training = true }.AsKwArgs());
             var loss = Loss.Zero;
             for (int scaleIndex = 0; scaleIndex < YOLOv4.XYScale.Length; scaleIndex++) {
                 Tensor conv = output[scaleIndex * 2];
@@ -227,7 +281,7 @@
             if (inputSize <= 0) throw new ArgumentOutOfRangeException(nameof(inputSize));
             if (classCount <= 0) throw new ArgumentOutOfRangeException(nameof(classCount));
 
-            Tensor input = tf.keras.Input(new TensorShape(inputSize, inputSize, 3));
+            Tensor input = tf.keras.Input(new TensorShape(inputSize, inputSize, 3), name: "image");
             var featureMaps = YOLOv4.Apply(input, classCount: classCount);
 
             var anchors = tf.constant(YOLOv4.Anchors);
@@ -305,6 +359,19 @@
                                 ndarray<float> targetLabels, ndarray<float> targetBBoxes,
                                 int strideSize, int classCount,
                                 float intersectionOverUnionLossThreshold) {
+            var labels = AsTensor(targetLabels);
+            var bboxes = AsTensor(targetBBoxes);
+
+            return ComputeLoss(pred, conv,
+                               targetLabels: labels, targetBBoxes: bboxes,
+                               strideSize: strideSize, classCount: classCount,
+                               intersectionOverUnionLossThreshold: intersectionOverUnionLossThreshold);
+        }
+
+        internal static Loss ComputeLoss(Tensor pred, Tensor conv,
+                                Tensor<float> targetLabels, Tensor<float> targetBBoxes,
+                                int strideSize, int classCount,
+                                float intersectionOverUnionLossThreshold) {
             Tensor batchSize = tf.shape(conv)[0];
             Tensor outputSize = tf.shape(conv)[1];
             Tensor inputSize = strideSize * outputSize;
@@ -317,9 +384,9 @@
             var predXYWH = pred[.., .., .., .., 0..4];
             var predConf = pred[.., .., .., .., 4..5];
 
-            var labelXYWH = AsTensor(targetLabels[.., .., .., .., 0..4]);
-            var respondBBox = AsTensor(targetLabels[.., .., .., .., 4..5]);
-            var labelProb = AsTensor(targetLabels[.., .., .., .., 5..]);
+            var labelXYWH = targetLabels[.., .., .., .., 0..4];
+            var respondBBox = targetLabels[.., .., .., .., 4..5];
+            var labelProb = targetLabels[.., .., .., .., 5..];
 
             var generalizedIntersectionOverUnion = tf.expand_dims(
                 BBoxGeneralizedIntersectionOverUnion(predXYWH, labelXYWH),
@@ -331,7 +398,7 @@
 
             var intersectionOverUnion = BBoxIOU(
                 boxes1: predXYWH[.., .., .., .., tf.newaxis, ..],
-                boxes2: AsTensor(targetBBoxes[.., np.newaxis, np.newaxis, np.newaxis, .., ..]));
+                boxes2: targetBBoxes[.., null, null, null, .., ..]);
 
             var maxIntersectionOverUnion = tf.expand_dims(
                 tf.reduce_max(intersectionOverUnion, axis: new[] { -1 }),
@@ -447,6 +514,6 @@
         }
 
         static readonly int[] DefaultXYScale = { 1, 1, 1, };
-        const float DefaultIntersectionOverUnionLossThreshold = 0.5f;
+        internal const float DefaultIntersectionOverUnionLossThreshold = 0.5f;
     }
 }

@@ -6,7 +6,9 @@
     using System.Linq;
     using System.Threading.Tasks;
 
-    class BufferedEnumerable<T> : IEnumerable<T> {
+    using Python.Runtime;
+
+    class BufferedEnumerable<T> : IEnumerable<T>, ICollection {
         readonly IReadOnlyList<T> lazyList;
         readonly int bufferSize;
 
@@ -15,6 +17,8 @@
             if (bufferSize < 1) throw new ArgumentOutOfRangeException(nameof(bufferSize));
             this.bufferSize = bufferSize;
         }
+
+        public int Count => this.lazyList.Count;
 
         public IEnumerator<T> GetEnumerator() {
             var buffer = new BlockingCollection<Task<T>>(boundedCapacity: this.bufferSize);
@@ -42,9 +46,20 @@
             Task.Run(Load);
 
             return buffer.GetConsumingEnumerable()
-                .Select(t => t.Result)
+                .Select(t => {
+                    IntPtr multithreadHandle = PythonEngine.BeginAllowThreads();
+                    try {
+                        return t.Result;
+                    } finally {
+                        PythonEngine.EndAllowThreads(multithreadHandle);
+                    }
+                })
                 .GetEnumerator();
         }
         IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
+
+        bool ICollection.IsSynchronized => false;
+        object ICollection.SyncRoot => this.lazyList;
+        void ICollection.CopyTo(Array array, int index) => throw new NotImplementedException();
     }
 }

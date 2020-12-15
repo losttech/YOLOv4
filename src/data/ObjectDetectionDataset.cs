@@ -134,10 +134,12 @@
                 int index = batchIndex * batchSize + itemNo;
                 // loop the last few items for the last batch if necessary
                 if (index >= this.Count) index -= this.Count;
+
                 string annotation = this.annotations[index];
                 var rawEntry = LoadAnnotationClr(annotation);
                 if (onloadAugmentation != null)
                     rawEntry = onloadAugmentation(rawEntry);
+
                 var entry = Preprocess(rawEntry, new Size(this.inputSize, this.inputSize));
 
                 var (labels, boxes) = this.PreprocessTrueBoxes(entry.BoundingBoxes, outputSizes);
@@ -468,6 +470,14 @@
             public ndarray<float> Images { get; set; }
             public ndarray<float>[] BBoxLabels { get; set; }
             public ndarray<float>[] BBoxes { get; set; }
+
+            public (IDictionary<string, ndarray<float>>, ndarray) ToGeneratorOutput()
+                => (this.BBoxLabels.Select((l, i) => ($"label{i}", l))
+                    .Concat(this.BBoxes.Select((b, i) => ($"box{i}", b)))
+                    .Append(("image", this.Images))
+                    .ToDictionary(),
+
+                    np.zeros(this.Images.shape.Item1));
         }
 
         public struct Entry<T> {

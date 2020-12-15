@@ -17,8 +17,6 @@
     using tensorflow.keras.callbacks;
     using tensorflow.keras.models;
     using tensorflow.keras.optimizers;
-    using tensorflow.python.ops.summary_ops_v2;
-    using tensorflow.summary;
 
     class TrainV4 : ConsoleCommand {
         public string[] Annotations { get; set; }
@@ -36,13 +34,14 @@
         public bool Benchmark { get; set; }
         public int FirstStageEpochs { get; set; } = 20;
         public int SecondStageEpochs { get; set; } = 30;
+        public int WarmupEpochs { get; set; } = 2;
         public string LogDir { get; set; }
         public string? WeightsPath { get; set; }
 
         public override int Run(string[] remainingArguments) {
             Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
 
-            tf.enable_eager_execution();
+            //tf.enable_eager_execution();
 
             tf.debugging.set_log_device_placement(this.LogDevicePlacement);
 
@@ -60,39 +59,31 @@
                 anchorsPerScale: this.AnchorsPerScale,
                 maxBBoxPerScale: this.MaxBBoxPerScale);
             var model = YOLO.CreateV4Trainable(dataset.InputSize, dataset.ClassNames.Length, dataset.Strides);
+
+            var learningRateSchedule = new YOLO.LearningRateSchedule(
+                totalSteps: (long)(this.FirstStageEpochs + this.SecondStageEpochs) * dataset.BatchCount(this.BatchSize),
+                warmupSteps: this.WarmupEpochs * dataset.BatchCount(this.BatchSize));
             // https://github.com/AlexeyAB/darknet/issues/1845
-            var optimizer = new Adam(epsilon: 0.000001);
-            if (this.ModelSummary) {
+            var optimizer = new Adam(learning_rate: learningRateSchedule, epsilon: 0.000001);
+            if (this.ModelSummary)
                 model.summary();
-            }
             if (this.WeightsPath != null)
                 model.load_weights(this.WeightsPath);
 
-            SummaryWriter? summaryWriter = this.LogDir is null ? null : tf.summary.create_file_writer(this.LogDir);
-            IContextManager<object> summaryRecordOn = summary_ops_v2.always_record_summaries_dyn();
-            using var _ = summaryRecordOn.StartUsing();
-            IContextManager<object>? summaryContext = summaryWriter?.as_default();
-            using var _activeContext = summaryContext?.StartUsing();
-
             var callbacks = new List<ICallback> {
-                new BaseLogger(),
-                new TrainingLogger(),
+                new TensorBoard(log_dir: this.LogDir, batch_size: this.BatchSize, profile_batch: 4),
+                new ProgbarLogger(),
             };
             if (!this.Benchmark)
                 callbacks.Add(new ModelCheckpoint("yoloV4.weights.{epoch:02d}", save_weights_only: true));
 
-            YOLO.Train(model, optimizer, dataset, batchSize: this.BatchSize,
+            YOLO.TrainGenerator(model, optimizer, dataset, batchSize: this.BatchSize,
                        firstStageEpochs: this.FirstStageEpochs,
                        secondStageEpochs: this.SecondStageEpochs,
-                       callbacks: callbacks,
-                       testRun: this.TestRun,
-                       benchmark: this.Benchmark);
+                       callbacks: callbacks);
 
             if (!this.Benchmark && !this.TestRun)
                 model.save_weights("yoloV4.weights-trained");
-
-            summaryContext?.__exit__(null, null, null);
-            summaryWriter?.close();
 
             // the following does not work due to the need to name layers properly
             // https://stackoverflow.com/questions/61402903/unable-to-create-group-name-already-exists

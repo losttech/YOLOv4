@@ -3,6 +3,8 @@
     using System.Collections.Generic;
     using System.Linq;
 
+    using LostTech.Gradient.BuiltIns;
+
     static class Tools {
         public static IEnumerable<bool> Repeat(int times) => Enumerable.Repeat(true, times);
         [Obsolete("Use random.shuffle for reproducibility")]
@@ -65,5 +67,12 @@
 
         public static IEnumerable<T> BufferedEnumerate<T>(this IReadOnlyList<T> list, int bufferSize)
             => new BufferedEnumerable<T>(list, bufferSize);
+
+        internal static PythonDict<TKey, TValue> ToDictionary<TKey, TValue>(this IEnumerable<ValueTuple<TKey, TValue>> seq) {
+            var result = new PythonDict<TKey, TValue>();
+            foreach (var (key, val) in seq)
+                result.Add(key, val);
+            return result;
+        }
     }
 }
