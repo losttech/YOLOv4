@@ -53,14 +53,6 @@
             }
 
             bool isFreeze = false;
-            // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
-            string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
-            void SetFreeze(bool freeze) {
-                foreach(string name in freezeLayers) {
-                    var layer = model.get_layer(name);
-                    Utils.SetTrainableRecursive(layer, !freeze);
-                }
-            }
             int totalBatches = 0;
             foreach (int epoch in Enumerable.Range(0, firstStageEpochs + secondStageEpochs)) {
                 // let 1st batch train with unfrozen layers to initialize them
@@ -69,12 +61,12 @@
                         if (!isFreeze) {
                             isFreeze = true;
 
-                            SetFreeze(true);
+                            SetFreeze(model, true);
                         }
                     } else {
                         if (isFreeze) {
                             isFreeze = false;
-                            SetFreeze(false);
+                            SetFreeze(model, false);
                         }
                     }
                 }
@@ -103,9 +95,6 @@
 
                         stepLoss = default;
 
-                        GC.Collect();
-                        GC.WaitForPendingFinalizers();
-
                         allocIssues = 0;
 
                         if (testRun)
@@ -127,9 +116,6 @@
                     foreach (var batch in testSet.Batch(batchSize: batchSize, onloadAugmentation: null))
                         try {
                             testLoss += TestStep(batch, model, dataset.ClassNames.Length, dataset.Strides).AsFinal();
-
-                            GC.Collect();
-                            GC.WaitForPendingFinalizers();
 
                             allocIssues = 0;
                             if (testRun)
@@ -181,29 +167,23 @@
                 inputs = trueLabels.Concat(trueBoxes).Prepend((Tensor<float>)model.input_dyn),
                 outputs = loss }.AsKwArgs());
 
-            // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
-            string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
-            void SetFreeze(bool freeze) {
-                foreach (string name in freezeLayers) {
-                    var layer = model.get_layer(name);
-                    Utils.SetTrainableRecursive(layer, !freeze);
-                }
-            }
             var generator = ListLinq.Select(
                                         dataset.Batch(batchSize: batchSize,
                                                       onloadAugmentation: ObjectDetectionDataset.RandomlyApplyAugmentations),
                                         batch => batch.ToGeneratorOutput())
                                    .ToSequence();
             if (firstStageEpochs > 0) {
-                SetFreeze(true);
+                SetFreeze(model, true);
                 model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
                 model.fit_generator_dyn(generator, epochs: firstStageEpochs, callbacks: callbacks,
+                                        verbose: 0,
                                         shuffle: false);
-                SetFreeze(false);
+                SetFreeze(model, false);
             }
             model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
-            model.fit_generator_dyn(generator, epochs: secondStageEpochs, callbacks: callbacks,
+            model.fit_generator_dyn(generator, epochs: firstStageEpochs + secondStageEpochs, callbacks: callbacks,
                                     shuffle: false,
+                                    verbose: 0,
                                     initial_epoch: new ImplicitContainer<object>(firstStageEpochs));
         }
 
@@ -232,6 +212,15 @@
             }
 
             return losses;
+        }
+
+        // see https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/9ab36aaa90c46aa063e3356d8e7f0e5bb27d919b
+        static readonly string[] freezeLayers = { "conv2d_93", "conv2d_101", "conv2d_109" };
+        static void SetFreeze(Model model, bool freeze) {
+            foreach (string name in freezeLayers) {
+                var layer = model.get_layer(name);
+                Utils.SetTrainableRecursive(layer, !freeze);
+            }
         }
 
         static void WriteLosses(IOptimizer optimizer, Variable globalSteps, Loss losses) {
