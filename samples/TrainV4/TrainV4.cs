@@ -41,8 +41,6 @@
         public override int Run(string[] remainingArguments) {
             Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
 
-            //tf.enable_eager_execution();
-
             tf.debugging.set_log_device_placement(this.LogDevicePlacement);
 
             if (this.GpuAllowGrowth) {
@@ -50,6 +48,9 @@
                 config.gpu_options.allow_growth = true;
                 tf.keras.backend.set_session(Session.NewDyn(config: config));
             }
+
+            if (this.TestRun)
+                this.Annotations = this.Annotations.Take(this.BatchSize*3).ToArray();
 
             var dataset = new ObjectDetectionDataset(this.Annotations,
                 classNames: this.ClassNames,
@@ -71,10 +72,11 @@
                 model.load_weights(this.WeightsPath);
 
             var callbacks = new List<ICallback> {
+                new LearningRateLogger(),
                 new TensorBoard(log_dir: this.LogDir, batch_size: this.BatchSize, profile_batch: 4),
                 new ProgbarLogger(),
             };
-            if (!this.Benchmark)
+            if (!this.Benchmark && !this.TestRun)
                 callbacks.Add(new ModelCheckpoint("yoloV4.weights.{epoch:02d}", save_weights_only: true));
 
             YOLO.TrainGenerator(model, optimizer, dataset, batchSize: this.BatchSize,
