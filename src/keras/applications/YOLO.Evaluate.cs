@@ -135,26 +135,6 @@
             };
         }
 
-        public static ObjectDetectionResult[] Detect(Model detector, Size supportedSize, Image<Rgb24> image) {
-            if (detector is null) throw new ArgumentNullException(nameof(detector));
-            if (image is null) throw new ArgumentNullException(nameof(image));
-
-            var input = ImageTools.YoloPreprocess(new ObjectDetectionDataset.ClrEntry {
-                Image = image.Clone(),
-            }, supportedSize);
-            using var _ = Python.Runtime.Py.GIL();
-            var images = input.Image[np.newaxis, np.rest_of_the_axes].AsArray();
-
-            IList<ndarray<float>> prediction = detector.__call___dyn(images);
-            //var bbBox = PostProcessBBBox(prediction, YOLOv4.Anchors, YOLOv4.Strides, YOLOv4.XYScale);
-            //dynamic numpy = PythonModuleContainer.Get<np>();
-            //ndarray<float> outputs = numpy.concatenate(bbBox, axis: 0);
-            ////tf.image.combined_non_max_suppression()
-            //var processed = PostProcessBoxes(outputs[np.newaxis].AsArray(), image.Size(), supportedSize.Width, 0.25f);
-            return Array.Empty<ObjectDetectionResult>();
-        }
-
-
         static ndarray<float> PostProcessBBBox(IEnumerable<ndarray<float>> predictions,
                                      ndarray<int> anchors,
                                      ReadOnlySpan<int> strides,
