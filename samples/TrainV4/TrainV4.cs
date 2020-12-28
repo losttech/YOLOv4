@@ -74,7 +74,6 @@
             var callbacks = new List<ICallback> {
                 new LearningRateLogger(),
                 new TensorBoard(log_dir: this.LogDir, batch_size: this.BatchSize, profile_batch: 4),
-                new ProgbarLogger(),
             };
             if (!this.Benchmark && !this.TestRun)
                 callbacks.Add(new ModelCheckpoint("yoloV4.weights.{epoch:02d}", save_weights_only: true));

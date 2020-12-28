@@ -13,7 +13,6 @@
     using SixLabors.ImageSharp.PixelFormats;
 
     using tensorflow.data;
-    using tensorflow.datasets.ObjectDetection;
     using tensorflow.image;
     using tensorflow.keras.models;
     static partial class YOLO {
@@ -53,7 +52,6 @@
             var input = ImageTools.YoloPreprocess(new ObjectDetectionDataset.ClrEntry {
                 Image = image.Clone(),
             }, supportedSize);
-            using var _ = Python.Runtime.Py.GIL();
             var images = input.Image[np.newaxis, np.rest_of_the_axes].AsArray();
 
             IDictionary<string, Tensor> prediction = detector(tf.constant(images));
@@ -81,7 +79,7 @@
             }, supportedSize);
             var images = input.Image[np.newaxis, np.rest_of_the_axes].AsArray();
 
-            IList<Tensor<float>> prediction = rawDetector.__call___dyn(images);
+            IList<Tensor> prediction = rawDetector.__call__(images);
             Debug.Assert(prediction.Count == 3);
             var output = new YOLOv4.Output {
                 SSBox = prediction[0],
@@ -93,10 +91,10 @@
                                           xyScale: xyScale,
                                           scoreThreshold: scoreThreshold);
 
-            ndarray<float> boxs = suppression.Boxes.numpy().AsArray<float>();
-            ndarray<float> scores = suppression.Scores.numpy().AsArray<float>();
-            ndarray<long> classes = suppression.Classes.numpy().AsArray<long>();
-            ndarray<int> detections = suppression.Detections.numpy().AsArray<int>();
+            ndarray<float> boxs = suppression.Boxes.numpy();
+            ndarray<float> scores = suppression.Scores.numpy();
+            ndarray<long> classes = suppression.Classes.numpy();
+            ndarray<int> detections = suppression.Detections.numpy();
 
             return ObjectDetectionResult.FromCombinedNonMaxSuppressionBatch(
                 boxs, scores, classes, detections[0].AsScalar());

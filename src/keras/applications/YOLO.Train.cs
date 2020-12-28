@@ -175,16 +175,18 @@
             if (firstStageEpochs > 0) {
                 SetFreeze(model, true);
                 model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
-                model.fit_generator_dyn(generator, epochs: firstStageEpochs, callbacks: callbacks,
-                                        verbose: 0,
-                                        shuffle: false);
+                model.fit_generator(generator, callbacks: callbacks,
+                                    verbose: 1,
+                                    shuffle: false,
+                                    epochs: firstStageEpochs);
                 SetFreeze(model, false);
             }
             model.compile(new ImplicitContainer<object>(optimizer), new ZeroLoss());
-            model.fit_generator_dyn(generator, epochs: firstStageEpochs + secondStageEpochs, callbacks: callbacks,
-                                    shuffle: false,
-                                    verbose: 0,
-                                    initial_epoch: new ImplicitContainer<object>(firstStageEpochs));
+            model.fit_generator(generator, callbacks: callbacks,
+                                shuffle: false,
+                                verbose: 1,
+                                epochs: firstStageEpochs + secondStageEpochs,
+                                initial_epoch: firstStageEpochs);
         }
 
         static Loss TestStep(ObjectDetectionDataset.EntryBatch batch, Model model, int classCount, ReadOnlySpan<int> strides) {
@@ -238,9 +240,9 @@
         }
 
         static void UpdateLearningRate(IOptimizer optimizer, Variable step, LearningRateSchedule learningRateSchedule) {
-            var learningRate = learningRateSchedule.Get(step: step);
+            Tensor learningRate = learningRateSchedule.Get(step: step);
             var optimizerLearningRate = optimizer.DynamicGet<Variable>("lr");
-            optimizerLearningRate.assign_dyn(learningRate);
+            optimizerLearningRate.assign(learningRate);
         }
 
         public static Loss ComputeLosses(Model model,
@@ -249,7 +251,7 @@
             if (model is null) throw new ArgumentNullException(nameof(model));
             if (classCount <= 0) throw new ArgumentOutOfRangeException(nameof(classCount));
 
-            IList<Tensor> output = model.__call___dyn(batch.Images, new { training = true }.AsKwArgs());
+            IList<Tensor> output = model.__call__(batch.Images, training: true);
             var loss = Loss.Zero;
             for (int scaleIndex = 0; scaleIndex < YOLOv4.XYScale.Length; scaleIndex++) {
                 Tensor conv = output[scaleIndex * 2];
@@ -387,7 +389,7 @@
 
             var intersectionOverUnion = BBoxIOU(
                 boxes1: predXYWH[.., .., .., .., tf.newaxis, ..],
-                boxes2: targetBBoxes[.., null, null, null, .., ..]);
+                boxes2: targetBBoxes[.., tf.newaxis, tf.newaxis, tf.newaxis, .., ..]);
 
             var maxIntersectionOverUnion = tf.expand_dims(
                 tf.reduce_max(intersectionOverUnion, axis: new[] { -1 }),
@@ -415,10 +417,8 @@
         }
 
         // workaround for a GIL-related bug in tf.constant_scalar
-        static Tensor<T> AsTensor<T>(IArrayLike<T> numpyValue) {
-            using var _ = Python.Runtime.Py.GIL();
-            return tf.constant_scalar<T>(default(T)).DynamicInvoke<Tensor<T>>("__add__", numpyValue);
-        }
+        static Tensor<T> AsTensor<T>(IArrayLike<T> numpyValue) where T : unmanaged
+            => tf.constant_scalar<T>(default) + numpyValue;
 
         // TODO: https://github.com/hunglc007/tensorflow-yolov4-tflite/commit/a689606a5a75b22e2363796b996d964cf2c47e77
         static Tensor BBoxIOU(Tensor boxes1, Tensor boxes2) {

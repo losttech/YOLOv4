@@ -32,7 +32,6 @@
                 this.InitialLearningRate = initialLearningRate;
                 this.FinalLearningRate = finalLearningRate;
 
-                using var _ = Python.Runtime.Py.GIL();
                 this.totalSteps = tf.constant_scalar<float>(totalSteps);
                 this.warmupSteps = tf.constant_scalar<float>(warmupSteps);
                 this.initialLR = tf.constant_scalar(initialLearningRate);

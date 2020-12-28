@@ -10,9 +10,7 @@
             this.source = source ?? throw new ArgumentNullException(nameof(source));
         }
 
-        public override (ndarray, object) __getitem__(int index) {
-            throw new NotImplementedException();
-        }
+        public override (ndarray, object) __getitem__(int index) => throw new NotSupportedException();
         public new T this[int index] => this.source[index];
 
         public override dynamic __getitem___dyn(object index) => throw new NotSupportedException();

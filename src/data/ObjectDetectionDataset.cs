@@ -9,8 +9,6 @@
 
     using numpy;
 
-    using Python.Runtime;
-
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.Advanced;
     using SixLabors.ImageSharp.PixelFormats;
@@ -202,8 +200,8 @@
                 out int cropXMin, out int cropYMin, out int cropXMax, out int cropYMax);
 
             entry.Image = entry.Image[cropYMin..cropYMax, cropXMin..cropXMax];
-            entry.BoundingBoxes[(.., new[] { 0, 2 })] -= cropXMin;
-            entry.BoundingBoxes[(.., new[] { 1, 3 })] -= cropYMin;
+            entry.BoundingBoxes[.., new[] { 0, 2 }] -= cropXMin;
+            entry.BoundingBoxes[.., new[] { 1, 3 }] -= cropYMin;
 
             return entry;
         }
@@ -218,8 +216,8 @@
             var rect = new Rectangle(cropXMin, cropYMin, cropXMax - cropXMin, cropYMax - cropYMin);
 
             entry.Image.Mutate(x => x.Crop(rect));
-            entry.BoundingBoxes[(.., new[] { 0, 2 })] -= cropXMin;
-            entry.BoundingBoxes[(.., new[] { 1, 3 })] -= cropYMin;
+            entry.BoundingBoxes[.., new[] { 0, 2 }] -= cropXMin;
+            entry.BoundingBoxes[.., new[] { 1, 3 }] -= cropYMin;
 
             return entry;
         }
@@ -250,8 +248,8 @@
             GetRandomTranslation(entry.BoundingBoxes, h, w, out int tx, out int ty);
 
             entry.Image = TranslateImage(entry.Image, tx: tx, ty: ty);
-            entry.BoundingBoxes[(.., new[] { 0, 2 })] += tx;
-            entry.BoundingBoxes[(.., new[] { 1, 3 })] += ty;
+            entry.BoundingBoxes[.., new[] { 0, 2 }] += tx;
+            entry.BoundingBoxes[.., new[] { 1, 3 }] += ty;
 
             return entry;
         }
@@ -270,8 +268,8 @@
             var translated = new Image<Rgb24>(entry.Image.Width, entry.Image.Height, Color.Black);
             translated.Mutate(x => x.DrawImage(entry.Image, new Point(tx, ty), opacity: 1));
             entry.Image = translated;
-            entry.BoundingBoxes[(.., new[] { 0, 2 })] += tx;
-            entry.BoundingBoxes[(.., new[] { 1, 3 })] += ty;
+            entry.BoundingBoxes[.., new[] { 0, 2 }] += tx;
+            entry.BoundingBoxes[.., new[] { 1, 3 }] += ty;
 
             return entry;
         }
@@ -364,29 +362,28 @@
         public static Entry<float> Preprocess(ClrEntry entry, Size targetSize)
             => ImageTools.YoloPreprocess(entry, targetSize);
 
-        static readonly PyObject ellipsis;
         internal static ndarray<float> BBoxIOU(ndarray<float> boxes1, ndarray<float> boxes2) {
-            var area1 = boxes1[(ellipsis, 2)] * boxes1[(ellipsis, 3)];
-            var area2 = boxes1[(ellipsis, 2)] * boxes1[(ellipsis, 3)];
+            var area1 = boxes1[np.rest_of_the_axes, 2] * boxes1[np.rest_of_the_axes, 3];
+            var area2 = boxes1[np.rest_of_the_axes, 2] * boxes1[np.rest_of_the_axes, 3];
 
             boxes1 = np.concatenate(new[] {
-                boxes1[(ellipsis, ..2)] - boxes1[(ellipsis, 2..)] * 0.5f,
-                boxes1[(ellipsis, ..2)] + boxes1[(ellipsis, 2..)] * 0.5f,
+                boxes1[np.rest_of_the_axes, ..2] - boxes1[np.rest_of_the_axes, 2..] * 0.5f,
+                boxes1[np.rest_of_the_axes, ..2] + boxes1[np.rest_of_the_axes, 2..] * 0.5f,
             }, axis: -1);
             boxes2 = np.concatenate(new[] {
-                boxes2[(ellipsis, ..2)] - boxes2[(ellipsis, 2..)]*0.5f,
-                boxes2[(ellipsis, ..2)] + boxes2[(ellipsis, 2..)]*0.5f,
+                boxes2[np.rest_of_the_axes, ..2] - boxes2[np.rest_of_the_axes, 2..]*0.5f,
+                boxes2[np.rest_of_the_axes, ..2] + boxes2[np.rest_of_the_axes, 2..]*0.5f,
             }, axis: -1);
 
-            var leftUp = np.maximum(boxes1[(ellipsis, ..2)].AsArray(), boxes2[(ellipsis, ..2)].AsArray());
-            var rightDown = np.minimum(boxes1[(ellipsis, 2..)].AsArray(), boxes2[(ellipsis, 2..)].AsArray());
+            var leftUp = np.maximum(boxes1[np.rest_of_the_axes, ..2], boxes2[np.rest_of_the_axes, ..2]);
+            var rightDown = np.minimum(boxes1[np.rest_of_the_axes, 2..], boxes2[np.rest_of_the_axes, 2..]);
 
             var intersection = np.maximum(rightDown - leftUp, 0.0f);
-            var intersectionArea = intersection[(ellipsis, 0)] * intersection[(ellipsis, 1)];
+            var intersectionArea = intersection[np.rest_of_the_axes, 0] * intersection[np.rest_of_the_axes, 1];
             var epsilon = new float32(tf.keras.backend.epsilon());
             var unionArea = np.maximum(area1 + area2 - intersectionArea, epsilon);
 
-            return np.maximum(epsilon, (intersectionArea / unionArea).AsArray<float>());
+            return np.maximum(epsilon, intersectionArea / unionArea);
         }
         (ndarray<float>[], ndarray<float>[]) PreprocessTrueBoxes(ndarray<int> bboxes, int[] outputSizes) {
             var label = outputSizes
@@ -417,7 +414,7 @@
                     (coords[2..] + coords[..2]).AsType<float>() * 0.5f,
                     (coords[2..] - coords[..2]).AsType<float>()
                 }, axis: -1);
-                var bboxXYWHScaled = (1.0f * bboxXYWH[(np.newaxis, ..)] / stridesPlus).AsArray();
+                var bboxXYWHScaled = (1.0f * bboxXYWH[np.newaxis, ..] / stridesPlus).AsArray();
 
                 var iou = new List<ndarray<float>>();
 
@@ -425,10 +422,10 @@
                     var indices = bboxXYWHScaled[scale, 0..2].AsType<int>();
                     ArrayOrElement<int> xind = indices[0], yind = indices[1];
 
-                    label[scale][(yind, xind, iouMaskOrIndex, ..)] = 0;
-                    label[scale][(yind, xind, iouMaskOrIndex, 0..4)] = bboxXYWH;
-                    label[scale][(yind, xind, iouMaskOrIndex, 4..5)] = 1.0f;
-                    label[scale][(yind, xind, iouMaskOrIndex, 5..)] = smoothOneHot;
+                    label[scale][yind, xind, iouMaskOrIndex, ..] = 0;
+                    label[scale][yind, xind, iouMaskOrIndex, 0..4] = bboxXYWH;
+                    label[scale][yind, xind, iouMaskOrIndex, 4..5] = 1.0f;
+                    label[scale][yind, xind, iouMaskOrIndex, 5..] = smoothOneHot;
 
                     int bboxIndex = bboxCount[scale].AsScalar() % (int)this.maxBBoxPerScale;
                     bboxesXYWH[scale][bboxIndex, ..4] = bboxXYWH;
@@ -538,10 +535,5 @@
                 .reshape(new[] { 3, 3, 2 })
                 .AsArray<int>()
                 .AsType<float>();
-
-        static ObjectDetectionDataset() {
-            using var _ = Py.GIL();
-            ellipsis = PythonEngine.Eval("...");
-        }
     }
 }

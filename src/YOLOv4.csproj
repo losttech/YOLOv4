@@ -25,9 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="LostTech.Python.Runtime" Version="3.0.4-b1284" />
-    <PackageReference Include="LostTech.NumPy" Version="0.2.2-a6" />
-    <PackageReference Include="LostTech.TensorFlow" Version="1.15.0-CI-20201204-001" />
+    <PackageReference Include="LostTech.TensorFlow" Version="1.15.0" />
     <!-- The following is recommended for public projects -->
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <PackageReference Include="SixLabors.ImageSharp" Version="1.0.1" />
