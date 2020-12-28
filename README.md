@@ -2,7 +2,7 @@
 
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg)](LICENSE)
 
-*NOTICE: This is a port of https://github.com/SoloSynth1/tensorflow-yolov4
+*NOTICE: This is a port of https://github.com/hunglc007/tensorflow-yolov4-tflite
 
 YOLOv4 Implemented in Tensorflow 1.15
 
