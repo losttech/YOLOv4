@@ -11,7 +11,12 @@
 
     <!-- Package stuff -->
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <!--<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>-->
+    <Authors>Lost Tech LLC</Authors>
+    <Copyright>Lost Tech LLC</Copyright>
+    <Description>Real-Time Object Detection network. TensorFlow-based implementation with support for fine-tuning and training from scratch.</Description>
+    <PackageProjectUrl>https://github.com/losttech/YOLOv4</PackageProjectUrl>
+    <PackageTags>yolo;yolov4;object-detection;neural-network;darknet;tensorflow;machine-learning;ML;CNN;deep-learning</PackageTags>
+    <PackageReleaseNotes>See project site for samples</PackageReleaseNotes>
 
     <!-- The following is recommended for public projects -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
